@@ -35,8 +35,8 @@ A personal toolkit to make **Piapro Studio** (Crypton VOCALOID editor, runs as a
 
 ## How to run
 
-- **Hotkeys:** _(filled in once the script exists)_
-- **Converter:** _(filled in once the app exists)_
+- **Hotkeys:** double-click `hotkeys/PiaproFLHotkeys.ahk` (needs AutoHotkey v2). In Piapro: `Ctrl+wheel` = horizontal zoom ✅; `Alt+wheel` = vertical (under test).
+- **Converter:** `pip install -r midi2vsqx/requirements.txt`, then `python midi2vsqx/app.py`. Open MIDI → type lyrics → Export VSQX → Piapro **File ▸ Import ▸ VSQX**. Demo files: `python midi2vsqx/samples/make_twinkle.py`.
 
 ## Open questions / TODO
 
@@ -45,6 +45,8 @@ A personal toolkit to make **Piapro Studio** (Crypton VOCALOID editor, runs as a
 - [x] Piapro vertical zoom = `Ctrl+Shift+]`/`[` → mapped FL Alt+wheel to it (v0.2).
 - [ ] Export a reference `.vsqx` from Piapro to use as the schema ground truth.
 - [ ] Confirm lyric language (Japanese kana vs romaji) for the converter's defaults.
+- [ ] Verify Piapro imports our generated `.vsqx` (notes + lyrics) — try `midi2vsqx/samples/twinkle.vsqx`.
+- [ ] Verify whether Piapro accepts AHK-synthetic `Ctrl+Shift+]`/`[` (F8/F9 test) for vertical zoom.
 
 ## Session log
 
@@ -67,4 +69,12 @@ A personal toolkit to make **Piapro Studio** (Crypton VOCALOID editor, runs as a
 - ✅ **Horizontal zoom confirmed working** by user. **Vertical zoom found:** Piapro `Ctrl+Shift+]`/`[` (keyboard) + a +/− button bottom-right.
 - ✅ **v0.2:** mapped FL **Alt+wheel → `Ctrl+Shift+]`/`[`** (vertical zoom).
 - 🐞 **Vertical zoom debugging:** diagnostic (scan-code brackets + tooltip) showed **tooltip fires but no zoom** → the hotkey works, but Piapro rejects the keystroke. Root cause: the held **Alt taints the combo** (Piapro saw Ctrl+Shift+Alt+]; AHK does *not* auto-release Alt for *wheel* hotkeys).
-- 🔧 **Fix under test (WIP commit):** in `VZoom()`, explicitly `{Alt up}` → send `Ctrl+Shift+bracket` via `SendEvent` (30 ms press) → restore Alt. Tooltip kept as a temporary diagnostic. **→ User to verify Alt+wheel vertical zoom on return; if good, strip the tooltip for v1.0.**
+- 🔧 **SendEvent attempt → wrong result:** Alt+wheel zoomed *horizontally* — a physical scroll notch leaked mid-send while Ctrl+Shift were held (= stray Ctrl+Shift+wheel).
+- 🔧 **Now under test (commit 3c5340d):** atomic `Send("{Alt up}^+{bracket}{Alt down}")` (SendInput, uninterruptible) + **F8/F9** keys that send a clean `Ctrl+Shift+]`/`[` (no Alt/wheel) to isolate whether Piapro accepts the synthetic keystroke. **→ User testing F8/F9 + Alt+wheel.**
+
+#### Phase 2 progress (converter) — built while user away
+- ✅ **Researched VSQ4** against UtaFormatix3's template + writer (in `scratch/`). Tags: `t/dur/n/v/y/p`; resolution 480; tempo×100; part at preMeasure; note `<t>` song-relative; phoneme left unlocked so Piapro re-derives.
+- ✅ **Built + tested core** (`midi2vsqx/midi_reader.py` via `mido`; `vsqx_writer.py`). Sample Twinkle MIDI → valid `vsq4`, 7 notes, correct ticks/tempo; XML well-formed.
+- ✅ **Built GUI** (`app.py`, Tkinter): load MIDI → note table → fast lyric entry (Enter = next) → Export VSQX. Compiles + constructs OK.
+- ✅ **Sample committed:** `midi2vsqx/samples/twinkle.{mid,vsqx}` + `make_twinkle.py`. `mido` installed (user site).
+- ⏳ **Pending user test:** does Piapro import the `.vsqx` (notes + lyrics)? Quick check: import `samples/twinkle.vsqx`.
