@@ -13,7 +13,7 @@ A personal toolkit to make **Piapro Studio** (Crypton VOCALOID editor, runs as a
 
 ## Environment (verified 2026-06-15)
 
-- **Piapro Studio VSTi x64 v2.0.4.1** — closed-source. Plugin DLL: `C:\Program Files\VstPlugins\Piapro Studio VSTi.dll`; engine: `C:\Program Files\Crypton\Piapro Studio VSTi x64\` (`PPS.dll`, `VsqDatabase.dll`); settings: `%APPDATA%\Crypton`. Imports **VSQx and MIDI**.
+- **Piapro Studio VSTi x64 v2.0.4.1** — closed-source. Plugin DLL: `C:\Program Files\VstPlugins\Piapro Studio VSTi.dll`; engine: `C:\Program Files\Crypton\Piapro Studio VSTi x64\` (`PPS.dll`, `VsqDatabase.dll`); settings: `%APPDATA%\Crypton`. Imports **VSQx and MIDI**. Edition: **Piapro Studio for Hatsune Miku V4X** (bundled) — *not* NT.
 - **FL Studio 2025 (25.2.5)** primary; 21 and 20 also installed.
 - **Git 2.54**, **Python 3.9.6**, **GitHub CLI 2.94.0**, **AutoHotkey v2.0.26** installed. (Node.js not needed.)
 
@@ -29,7 +29,7 @@ A personal toolkit to make **Piapro Studio** (Crypton VOCALOID editor, runs as a
 - **Converter scope:** lyrics-focused (reuse FL Studio for note entry).
 - **Converter tech:** Python desktop app (Tkinter). *Not* a real VST plugin.
 - **Hotkeys tool:** AutoHotkey v2, context-sensitive to the Piapro window so FL Studio's own keys are untouched.
-- **Vertical-zoom keys:** default `Ctrl+PgUp` / `Ctrl+PgDn` (FL has no standard; tunable on request).
+- **Zoom gestures (revised):** replicate FL's *mouse-wheel* zoom inside Piapro — **Ctrl+wheel = horizontal**, **Alt+wheel = vertical** (up = in). User zooms with the wheel, not `PgUp`/`PgDn`.
 - **GitHub:** gh CLI + browser login; public repo `DAW-Extension-Claude`.
 - **Reporting:** mirror outcomes to the Notion "DAW Extension Claude" page using toggle blocks; keep this log current each exchange.
 
@@ -40,7 +40,9 @@ A personal toolkit to make **Piapro Studio** (Crypton VOCALOID editor, runs as a
 
 ## Open questions / TODO
 
-- [ ] Discover the Piapro editor window class/title + its native zoom mechanism (needs Piapro open in FL Studio).
+- [x] Identify the Piapro window — title `Piapro Studio`, host `FL64` (see `docs/research/piapro-window-and-zoom.md`).
+- [x] Piapro native zoom: `Ctrl+Shift+wheel` = horizontal zoom; vertical-zoom trigger still unknown.
+- [ ] Find Piapro's vertical-zoom trigger (to map FL's Alt+wheel) — may be an on-screen slider.
 - [ ] Export a reference `.vsqx` from Piapro to use as the schema ground truth.
 - [ ] Confirm lyric language (Japanese kana vs romaji) for the converter's defaults.
 
@@ -56,4 +58,10 @@ A personal toolkit to make **Piapro Studio** (Crypton VOCALOID editor, runs as a
 - Installed **GitHub CLI 2.94.0** and **AutoHotkey v2.0.26** (winget). gh not yet on this shell's PATH — using full path until Claude Code restarts.
 - Set up the Notion **Development Log** with toggle blocks (Session 1 logged).
 - ✅ **GitHub:** authenticated as KunqiK; created + pushed public repo **https://github.com/KunqiK/DAW-Extension-Claude**.
-- **Next:** Phase 1 (hotkeys) — open Piapro inside FL Studio for Window Spy discovery; confirm vertical-zoom keys (default `Ctrl+PgUp`/`Ctrl+PgDn`).
+
+#### Phase 1 progress (hotkeys)
+- 🔎 **Reframe:** user zooms in FL via **mouse-wheel gestures** (Ctrl+wheel = horizontal, Alt+wheel = vertical, up = in) — not keys. Goal: replicate those gestures in Piapro.
+- ✅ **Piapro window identified** via Win32 enumeration: GUI titled `Piapro Studio` (volatile `Afx:` class → match by title), hosted in `FL64`. AHK target: `SetTitleMatchMode(2)` + `WinActive("Piapro Studio")`.
+- ✅ **Piapro native zoom learned:** plain wheel = V-scroll, Shift+wheel = H-scroll, **Ctrl+Shift+wheel = H-zoom** (up=in); Ctrl+wheel & Alt+wheel = nothing. Vertical-zoom trigger not found yet.
+- ✅ **Shipped `hotkeys/PiaproFLHotkeys.ahk` v0.1:** in Piapro, **Ctrl+wheel → Ctrl+Shift+wheel** (horizontal zoom, FL parity), scoped to `WinActive("Piapro Studio")` via `{Blind}`.
+- ⏳ **Pending:** user tests v0.1 horizontal zoom; then hunt Piapro's vertical-zoom trigger to map FL's Alt+wheel.

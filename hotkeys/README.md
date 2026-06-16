@@ -1,22 +1,29 @@
-# hotkeys/ — Piapro Studio hotkeys to match FL Studio
+# hotkeys/ — Piapro Studio zoom that matches FL Studio
 
-An [AutoHotkey v2](https://www.autohotkey.com/) script that remaps Piapro Studio's zoom hotkeys to match FL Studio. Because Piapro Studio is closed-source and runs *inside* FL Studio as a plugin, the script is **context-sensitive**: the remaps fire **only while the Piapro editor window is focused**, so FL Studio's own keys are never affected.
+[`PiaproFLHotkeys.ahk`](PiaproFLHotkeys.ahk) is an [AutoHotkey v2](https://www.autohotkey.com/) script that makes Piapro Studio respond to FL Studio's zoom gestures. Because Piapro is closed-source and runs *inside* FL Studio, the script is **context-sensitive**: it only acts while a **Piapro Studio** window is focused, so FL Studio's own shortcuts are never affected.
 
-## Status
+## What it does
 
-🚧 In progress. Pending an on-machine discovery step (Piapro window class + its native zoom input).
+| You do (FL Studio style) | Piapro receives | Result | Status |
+|---|---|---|---|
+| **Ctrl + mouse wheel** | `Ctrl+Shift+wheel` (Piapro's native zoom) | Zoom **horizontally** (up = in, down = out) | ✅ Working |
+| **Alt + mouse wheel** | *(Piapro's vertical-zoom trigger)* | Zoom **vertically** | 🚧 Pending — Piapro's vertical-zoom trigger not found yet |
 
-## Target mapping (FL Studio → Piapro)
+### Why the translation?
+Piapro's *native* horizontal zoom is `Ctrl+Shift+wheel`; plain `Ctrl+wheel` does nothing. The script quietly converts your FL-style `Ctrl+wheel` into Piapro's `Ctrl+Shift+wheel`. AutoHotkey can't invent a zoom action — it can only send gestures Piapro already understands.
 
-| Action | Key | Notes |
-|--------|-----|-------|
-| Zoom in / out **horizontally** | `PgUp` / `PgDn` | Exact FL Studio match |
-| Zoom in / out **vertically** | `Ctrl+PgUp` / `Ctrl+PgDn` | FL has no default; convention, tunable |
+## Setup & use
 
-## Setup (once the script is ready)
+1. Install AutoHotkey v2 (once): `winget install --id AutoHotkey.AutoHotkey`
+2. **Double-click `PiaproFLHotkeys.ahk`.** A green **H** icon appears in the system tray and a tooltip confirms it loaded.
+3. Focus Piapro Studio (inside FL Studio) and use **Ctrl + wheel** to zoom horizontally.
 
-1. Install AutoHotkey v2: `winget install --id AutoHotkey.AutoHotkey`
-2. Double-click `PiaproFLHotkeys.ahk` (a tray icon appears).
-3. _(Optional)_ Add a shortcut to it in `shell:startup` to auto-run at login.
+**Stop it:** right-click the tray **H** → *Exit*.
+**After editing the script:** right-click the tray **H** → *Reload Script* (or just re-run the file).
 
-_Usage details and the autostart steps will be finalized here once the script is tested._
+### Run automatically at login (optional)
+Press `Win+R`, type `shell:startup`, Enter, and drop a **shortcut** to `PiaproFLHotkeys.ahk` into that folder.
+
+## Troubleshooting
+- **Nothing happens:** make sure the tray **H** is present and that the Piapro editor window (not FL's main window) is focused.
+- **Zoom direction feels inverted:** tell me and I'll swap `WheelUp`/`WheelDown` in the script.
