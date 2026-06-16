@@ -15,7 +15,13 @@ A personal toolkit to make **Piapro Studio** (Crypton VOCALOID editor, runs as a
 
 - **Piapro Studio VSTi x64 v2.0.4.1** — closed-source. Plugin DLL: `C:\Program Files\VstPlugins\Piapro Studio VSTi.dll`; engine: `C:\Program Files\Crypton\Piapro Studio VSTi x64\` (`PPS.dll`, `VsqDatabase.dll`); settings: `%APPDATA%\Crypton`. Imports **VSQx and MIDI**.
 - **FL Studio 2025 (25.2.5)** primary; 21 and 20 also installed.
-- **Git 2.54**, **Python 3.9.6** installed. GitHub CLI / AutoHotkey installed as we reach those phases. (Node.js not needed.)
+- **Git 2.54**, **Python 3.9.6**, **GitHub CLI 2.94.0**, **AutoHotkey v2.0.26** installed. (Node.js not needed.)
+
+**Tool paths** (per-user installs aren't always on the shell PATH — use full paths):
+- gh: `C:\Program Files\GitHub CLI\gh.exe`
+- AutoHotkey64: `%LOCALAPPDATA%\Programs\AutoHotkey\v2\AutoHotkey64.exe`
+- Window Spy: `%LOCALAPPDATA%\Programs\AutoHotkey\UX\WindowSpy.ahk`
+- Piapro VST DLL: `C:\Program Files\VstPlugins\Piapro Studio VSTi.dll`
 - **FL zoom shortcuts (target):** Piano Roll & Playlist `PgUp`/`PgDn` = zoom in/out (horizontal). No FL default for vertical zoom.
 
 ## Decisions
@@ -46,4 +52,8 @@ A personal toolkit to make **Piapro Studio** (Crypton VOCALOID editor, runs as a
 - Researched: FL zoom shortcuts (`PgUp`/`PgDn` horizontal), Piapro imports VSQx+MIDI, converter approach, and [UtaFormatix3](https://github.com/sdercolin/utaformatix3) as a format reference.
 - Locked decisions (see Decisions) via a short Q&A.
 - Wrote the approved plan; created repo scaffold (`README.md`, `.gitignore`, this log, `hotkeys/`, `midi2vsqx/`, `docs/research/`).
-- **Next:** init git → install gh + create public repo → set up Notion log → Phase 1 (hotkeys).
+- Initialized git on `main`; first commit `2f1fe83` (6 files).
+- Installed **GitHub CLI 2.94.0** and **AutoHotkey v2.0.26** (winget). gh not yet on this shell's PATH — using full path until Claude Code restarts.
+- Set up the Notion **Development Log** with toggle blocks (Session 1 logged).
+- ✅ **GitHub:** authenticated as KunqiK; created + pushed public repo **https://github.com/KunqiK/DAW-Extension-Claude**.
+- **Next:** Phase 1 (hotkeys) — open Piapro inside FL Studio for Window Spy discovery; confirm vertical-zoom keys (default `Ctrl+PgUp`/`Ctrl+PgDn`).
