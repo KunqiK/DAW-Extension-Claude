@@ -9,14 +9,16 @@
 ; Piapro Studio (for Miku V4 / V4X) native gestures:
 ;   plain wheel        = scroll vertically
 ;   Shift + wheel      = scroll horizontally
-;   Ctrl + Shift+wheel = zoom horizontally   <-- the trigger we reuse
-;   Ctrl + wheel       = (nothing)           <-- free, so we hijack it
-;   Alt  + wheel       = (nothing)
+;   Ctrl + Shift + wheel  = zoom horizontally  <-- reused for FL Ctrl+wheel
+;   Ctrl + Shift + ] / [  = zoom vertically    <-- reused for FL Alt+wheel
+;   Ctrl + wheel          = (nothing)          <-- free, so we hijack it
+;   Alt  + wheel          = (nothing)          <-- free, so we hijack it
 ;
-; What this script does: while a Piapro Studio window is focused, it turns
-; your FL-style Ctrl+wheel into Piapro's Ctrl+Shift+wheel, so Ctrl+wheel
-; zooms horizontally just like in FL Studio. It is ACTIVE ONLY in Piapro,
-; so FL Studio's own shortcuts are never touched.
+; What this script does: while a Piapro Studio window is focused, it maps
+; your FL-style gestures onto Piapro's real zoom triggers:
+;   Ctrl + wheel -> Ctrl+Shift+wheel   (horizontal zoom)
+;   Alt  + wheel -> Ctrl+Shift+] / [   (vertical zoom)
+; It is ACTIVE ONLY in Piapro, so FL Studio's own shortcuts are never touched.
 ;
 ; Requires AutoHotkey v2  (https://www.autohotkey.com/)
 ; Repo:    https://github.com/KunqiK/DAW-Extension-Claude
@@ -25,7 +27,7 @@
 SetTitleMatchMode(2)   ; match a window whose title CONTAINS the given text
 
 A_IconTip := "Piapro <-> FL zoom hotkeys (active only in Piapro Studio)"
-TrayTip("Ctrl+wheel now zooms horizontally inside Piapro (like FL Studio).",
+TrayTip("In Piapro: Ctrl+wheel = horizontal zoom, Alt+wheel = vertical zoom (like FL Studio).",
         "Piapro FL hotkeys loaded")
 
 ; --- These remaps fire ONLY while a 'Piapro Studio' window is active ----------
@@ -42,10 +44,11 @@ TrayTip("Ctrl+wheel now zooms horizontally inside Piapro (like FL Studio).",
     ^WheelUp::Send("{Blind}+{WheelUp}")     ; Ctrl + wheel up   -> zoom IN
     ^WheelDown::Send("{Blind}+{WheelDown}") ; Ctrl + wheel down -> zoom OUT
 
-    ; VERTICAL ZOOM — FL uses Alt+wheel. Piapro's vertical-zoom trigger is not
-    ; found yet, so this is intentionally left unmapped for now. Once we know
-    ; how Piapro zooms vertically, it gets mapped here:
-    ; !WheelUp::Send(...)   ; Alt + wheel up   -> zoom IN
-    ; !WheelDown::Send(...) ; Alt + wheel down -> zoom OUT
+    ; VERTICAL ZOOM — FL uses Alt+wheel; Piapro uses Ctrl+Shift+] / Ctrl+Shift+[.
+    ; NO {Blind} here: we want to DROP the held Alt and send a clean Ctrl+Shift+key.
+    ; (AHK's default Send releases the physical Alt during the send, then restores
+    ;  it, so Piapro sees Ctrl+Shift+] without Alt — and repeated scrolling works.)
+    !WheelUp::Send("^+]")     ; Alt + wheel up   -> Ctrl+Shift+]  -> vertical zoom IN
+    !WheelDown::Send("^+[")   ; Alt + wheel down -> Ctrl+Shift+[  -> vertical zoom OUT
 
 #HotIf   ; end Piapro-only context

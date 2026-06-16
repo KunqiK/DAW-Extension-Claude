@@ -7,7 +7,7 @@
 | You do (FL Studio style) | Piapro receives | Result | Status |
 |---|---|---|---|
 | **Ctrl + mouse wheel** | `Ctrl+Shift+wheel` (Piapro's native zoom) | Zoom **horizontally** (up = in, down = out) | ✅ Working |
-| **Alt + mouse wheel** | *(Piapro's vertical-zoom trigger)* | Zoom **vertically** | 🚧 Pending — Piapro's vertical-zoom trigger not found yet |
+| **Alt + mouse wheel** | `Ctrl+Shift+]` / `Ctrl+Shift+[` | Zoom **vertically** (up = in, down = out) | ✅ Working |
 
 ### Why the translation?
 Piapro's *native* horizontal zoom is `Ctrl+Shift+wheel`; plain `Ctrl+wheel` does nothing. The script quietly converts your FL-style `Ctrl+wheel` into Piapro's `Ctrl+Shift+wheel`. AutoHotkey can't invent a zoom action — it can only send gestures Piapro already understands.

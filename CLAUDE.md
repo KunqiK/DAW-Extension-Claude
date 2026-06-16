@@ -42,7 +42,7 @@ A personal toolkit to make **Piapro Studio** (Crypton VOCALOID editor, runs as a
 
 - [x] Identify the Piapro window — title `Piapro Studio`, host `FL64` (see `docs/research/piapro-window-and-zoom.md`).
 - [x] Piapro native zoom: `Ctrl+Shift+wheel` = horizontal zoom; vertical-zoom trigger still unknown.
-- [ ] Find Piapro's vertical-zoom trigger (to map FL's Alt+wheel) — may be an on-screen slider.
+- [x] Piapro vertical zoom = `Ctrl+Shift+]`/`[` → mapped FL Alt+wheel to it (v0.2).
 - [ ] Export a reference `.vsqx` from Piapro to use as the schema ground truth.
 - [ ] Confirm lyric language (Japanese kana vs romaji) for the converter's defaults.
 
@@ -64,4 +64,5 @@ A personal toolkit to make **Piapro Studio** (Crypton VOCALOID editor, runs as a
 - ✅ **Piapro window identified** via Win32 enumeration: GUI titled `Piapro Studio` (volatile `Afx:` class → match by title), hosted in `FL64`. AHK target: `SetTitleMatchMode(2)` + `WinActive("Piapro Studio")`.
 - ✅ **Piapro native zoom learned:** plain wheel = V-scroll, Shift+wheel = H-scroll, **Ctrl+Shift+wheel = H-zoom** (up=in); Ctrl+wheel & Alt+wheel = nothing. Vertical-zoom trigger not found yet.
 - ✅ **Shipped `hotkeys/PiaproFLHotkeys.ahk` v0.1:** in Piapro, **Ctrl+wheel → Ctrl+Shift+wheel** (horizontal zoom, FL parity), scoped to `WinActive("Piapro Studio")` via `{Blind}`.
-- ⏳ **Pending:** user tests v0.1 horizontal zoom; then hunt Piapro's vertical-zoom trigger to map FL's Alt+wheel.
+- ✅ **Horizontal zoom confirmed working** by user. **Vertical zoom found:** Piapro `Ctrl+Shift+]`/`[` (keyboard) + a +/− button bottom-right.
+- ✅ **v0.2:** mapped FL **Alt+wheel → `Ctrl+Shift+]`/`[`** (vertical zoom). Phase 1 core (H+V parity) complete pending user test of vertical.

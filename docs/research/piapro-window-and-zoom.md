@@ -39,8 +39,8 @@ In the VOCALOID piano window:
 | **Ctrl + Shift + wheel** | **Zoom horizontally** (up = in, down = out) |
 
 - **Horizontal zoom trigger = `Ctrl+Shift+wheel`.**
-- **Vertical zoom trigger = not found yet** — no tested wheel combo did it; may be an on-screen slider or unavailable. Still investigating.
+- **Vertical zoom trigger = `Ctrl+Shift+]` (in) / `Ctrl+Shift+[` (out)** — keyboard; also a +/− control at the bottom-right. Wheel combos (Ctrl+Alt, Alt+Shift, Ctrl+Alt+Shift) do nothing.
 
 ## Mapping (FL parity)
 - FL `Ctrl+wheel` (horizontal) → send **`Ctrl+Shift+wheel`** to Piapro. ✅ implemented in `hotkeys/PiaproFLHotkeys.ahk` (uses `{Blind}` to keep Ctrl held and add Shift).
-- FL `Alt+wheel` (vertical) → Piapro vertical-zoom trigger **TBD**.
+- FL `Alt+wheel` (vertical) → send **`Ctrl+Shift+]` / `Ctrl+Shift+[`** to Piapro. ✅ implemented (no `{Blind}`, so the held Alt is dropped).
