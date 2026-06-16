@@ -45,10 +45,26 @@ TrayTip("In Piapro: Ctrl+wheel = horizontal zoom, Alt+wheel = vertical zoom (lik
     ^WheelDown::Send("{Blind}+{WheelDown}") ; Ctrl + wheel down -> zoom OUT
 
     ; VERTICAL ZOOM — FL uses Alt+wheel; Piapro uses Ctrl+Shift+] / Ctrl+Shift+[.
-    ; NO {Blind} here: we want to DROP the held Alt and send a clean Ctrl+Shift+key.
-    ; (AHK's default Send releases the physical Alt during the send, then restores
-    ;  it, so Piapro sees Ctrl+Shift+] without Alt — and repeated scrolling works.)
-    !WheelUp::Send("^+]")     ; Alt + wheel up   -> Ctrl+Shift+]  -> vertical zoom IN
-    !WheelDown::Send("^+[")   ; Alt + wheel down -> Ctrl+Shift+[  -> vertical zoom OUT
+    ; Brackets are sent by SCAN CODE (sc01B = "]", sc01A = "[") so a held Shift
+    ; can't turn them into } / { — Piapro reads key+modifiers, so it sees the real
+    ; Ctrl+Shift+] / [. AHK auto-releases the hotkey's Alt during the Send.
+    ; (The ToolTip is a TEMPORARY diagnostic to confirm the hotkey is firing.)
+    !WheelUp::VZoom("{sc01B}", "IN")     ; Alt + wheel up   -> Ctrl+Shift+]
+    !WheelDown::VZoom("{sc01A}", "OUT")  ; Alt + wheel down -> Ctrl+Shift+[
 
 #HotIf   ; end Piapro-only context
+
+; Temporary diagnostic helper for vertical zoom (removed once confirmed working).
+; The held Alt would otherwise taint the combo (Piapro would see Ctrl+Shift+Alt+]),
+; so we release Alt, send a clean Ctrl+Shift+bracket with a real key-press
+; duration, then restore Alt so repeated scrolling keeps firing.
+VZoom(bracketKey, label) {
+    altDown := GetKeyState("Alt", "P")       ; is the user physically holding Alt?
+    SetKeyDelay(10, 30)                       ; 30 ms press duration (Event mode)
+    SendEvent("{Alt up}")                     ; clear Alt so the combo is clean
+    SendEvent("^+" . bracketKey)              ; Ctrl + Shift + bracket (by scan code)
+    if (altDown)
+        SendEvent("{Alt down}")               ; restore Alt to match the physical hold
+    ToolTip("vertical zoom " . label . "  (Alt was " . (altDown ? "DOWN" : "up") . ")")
+    SetTimer(() => ToolTip(), -1200)          ; auto-clear the tooltip
+}

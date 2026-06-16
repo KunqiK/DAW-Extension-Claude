@@ -65,4 +65,6 @@ A personal toolkit to make **Piapro Studio** (Crypton VOCALOID editor, runs as a
 - ✅ **Piapro native zoom learned:** plain wheel = V-scroll, Shift+wheel = H-scroll, **Ctrl+Shift+wheel = H-zoom** (up=in); Ctrl+wheel & Alt+wheel = nothing. Vertical-zoom trigger not found yet.
 - ✅ **Shipped `hotkeys/PiaproFLHotkeys.ahk` v0.1:** in Piapro, **Ctrl+wheel → Ctrl+Shift+wheel** (horizontal zoom, FL parity), scoped to `WinActive("Piapro Studio")` via `{Blind}`.
 - ✅ **Horizontal zoom confirmed working** by user. **Vertical zoom found:** Piapro `Ctrl+Shift+]`/`[` (keyboard) + a +/− button bottom-right.
-- ✅ **v0.2:** mapped FL **Alt+wheel → `Ctrl+Shift+]`/`[`** (vertical zoom). Phase 1 core (H+V parity) complete pending user test of vertical.
+- ✅ **v0.2:** mapped FL **Alt+wheel → `Ctrl+Shift+]`/`[`** (vertical zoom).
+- 🐞 **Vertical zoom debugging:** diagnostic (scan-code brackets + tooltip) showed **tooltip fires but no zoom** → the hotkey works, but Piapro rejects the keystroke. Root cause: the held **Alt taints the combo** (Piapro saw Ctrl+Shift+Alt+]; AHK does *not* auto-release Alt for *wheel* hotkeys).
+- 🔧 **Fix under test (WIP commit):** in `VZoom()`, explicitly `{Alt up}` → send `Ctrl+Shift+bracket` via `SendEvent` (30 ms press) → restore Alt. Tooltip kept as a temporary diagnostic. **→ User to verify Alt+wheel vertical zoom on return; if good, strip the tooltip for v1.0.**
