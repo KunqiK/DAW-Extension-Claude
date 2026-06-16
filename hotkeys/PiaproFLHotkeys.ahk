@@ -52,19 +52,31 @@ TrayTip("In Piapro: Ctrl+wheel = horizontal zoom, Alt+wheel = vertical zoom (lik
     !WheelUp::VZoom("{sc01B}", "IN")     ; Alt + wheel up   -> Ctrl+Shift+]
     !WheelDown::VZoom("{sc01A}", "OUT")  ; Alt + wheel down -> Ctrl+Shift+[
 
+    ; DIAGNOSTIC test keys: press F8 / F9 in Piapro to fire a CLEAN Ctrl+Shift+] / [
+    ; with NO Alt and NO wheel. If F8/F9 zoom vertically but Alt+wheel doesn't, the
+    ; problem is the Alt/wheel handling. If F8/F9 also do nothing, Piapro is ignoring
+    ; the synthetic keystroke and we need a different approach.
+    F8::VZoomTest("{sc01B}", "IN")
+    F9::VZoomTest("{sc01A}", "OUT")
+
 #HotIf   ; end Piapro-only context
 
-; Temporary diagnostic helper for vertical zoom (removed once confirmed working).
-; The held Alt would otherwise taint the combo (Piapro would see Ctrl+Shift+Alt+]),
-; so we release Alt, send a clean Ctrl+Shift+bracket with a real key-press
-; duration, then restore Alt so repeated scrolling keeps firing.
-VZoom(bracketKey, label) {
-    altDown := GetKeyState("Alt", "P")       ; is the user physically holding Alt?
-    SetKeyDelay(10, 30)                       ; 30 ms press duration (Event mode)
-    SendEvent("{Alt up}")                     ; clear Alt so the combo is clean
-    SendEvent("^+" . bracketKey)              ; Ctrl + Shift + bracket (by scan code)
-    if (altDown)
-        SendEvent("{Alt down}")               ; restore Alt to match the physical hold
-    ToolTip("vertical zoom " . label . "  (Alt was " . (altDown ? "DOWN" : "up") . ")")
-    SetTimer(() => ToolTip(), -1200)          ; auto-clear the tooltip
+; --- Vertical-zoom senders (temporary diagnostics: tooltips + F8/F9 test keys) ---
+; Alt+wheel path: ONE atomic SendInput drops the held Alt, sends a clean
+; Ctrl+Shift+bracket, then restores Alt. Because SendInput is atomic, a physical
+; wheel notch can't leak in mid-send (that leak previously produced a stray
+; Ctrl+Shift+wheel = horizontal zoom).
+VZoom(bracket, label) {
+    Send("{Alt up}^+" bracket "{Alt down}")
+    Tip("Alt+wheel  ->  Ctrl+Shift+" (label == "IN" ? "]" : "[") "   (vertical " label ")")
+}
+; F8/F9 path: a CLEAN Ctrl+Shift+bracket with no Alt and no wheel, to test whether
+; Piapro accepts the synthetic keystroke at all.
+VZoomTest(bracket, label) {
+    Send("^+" bracket)
+    Tip("F-key test  ->  Ctrl+Shift+" (label == "IN" ? "]" : "[") "   (vertical " label ")")
+}
+Tip(text) {
+    ToolTip(text)
+    SetTimer(() => ToolTip(), -1100)          ; auto-clear the tooltip
 }
