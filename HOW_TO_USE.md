@@ -32,7 +32,11 @@ Put lyrics on a melody for **Piapro Studio** (VOCALOID). Two jobs:
 | **Batch lyrics** | Paste many syllables at once instead of typing one by one. |
 | **Export VSQX** | Save the result. In Piapro: **File ▸ Import ▸ VSQX**, then **Job ▸ Convert phonemes to match language**. |
 | **▶ Play / Out / Sound** | Hear it — through Windows, or routed to **FL Studio** (see Playback). |
+| **▤ Lyrics** | Show/hide the lyric-list window (see below). |
 | **Font** | Change the look. **? Help** opens the full in-app guide. |
+
+### Two windows
+The app opens as **two side-by-side windows**: the **visualizer** (piano-roll + all the controls) on the left, and the **lyric list** in a tall window **docked to its right edge**. Move or resize the visualizer and the lyric window follows it (matching its height). Drag the lyric window's side to make it wider/narrower. Closed it by accident? Click **▤ Lyrics** to bring it back. Type in either window — your shortcuts work from both.
 
 The **piano-roll** shows your notes: **orange** = a syllable's start, **lavender** = a held/tuning note. Click a row (or a note) to find/select it. **Zoom** like FL Studio — **Zoom H −/＋** or **Ctrl + wheel** for time (horizontal), **V −/＋** or **Alt + wheel** for pitch (vertical). Plain wheel scrolls up/down, **Shift + wheel** sideways; a scrollbar appears when notes are taller than the view, and the roll grows when you enlarge the window.
 
