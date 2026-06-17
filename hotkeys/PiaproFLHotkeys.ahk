@@ -1,24 +1,32 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 ;==============================================================================
-; PiaproFLHotkeys.ahk  —  make Piapro Studio zoom like FL Studio
+; PiaproFLHotkeys.ahk  —  make Piapro Studio zoom like FL Studio   (v0.5)
 ;
 ; FL Studio gestures:   Ctrl + wheel = zoom HORIZONTAL
 ;                       Alt  + wheel = zoom VERTICAL
 ;
 ; Piapro Studio (for Miku V4 / V4X) native gestures:
-;   plain wheel        = scroll vertically
-;   Shift + wheel      = scroll horizontally
+;   plain wheel           = scroll vertically
+;   Shift + wheel         = scroll horizontally
 ;   Ctrl + Shift + wheel  = zoom horizontally  <-- reused for FL Ctrl+wheel
 ;   Ctrl + Shift + ] / [  = zoom vertically    <-- reused for FL Alt+wheel
 ;   Ctrl + wheel          = (nothing)          <-- free, so we hijack it
 ;   Alt  + wheel          = (nothing)          <-- free, so we hijack it
 ;
-; What this script does: while a Piapro Studio window is focused, it maps
-; your FL-style gestures onto Piapro's real zoom triggers:
+; This script, ONLY while a Piapro Studio window is focused, maps the FL gestures
+; onto Piapro's real zoom triggers (so FL Studio's own shortcuts are untouched):
 ;   Ctrl + wheel -> Ctrl+Shift+wheel   (horizontal zoom)
 ;   Alt  + wheel -> Ctrl+Shift+] / [   (vertical zoom)
-; It is ACTIVE ONLY in Piapro, so FL Studio's own shortcuts are never touched.
+;
+; TWO things make vertical zoom tricky (both handled below):
+;  1. SPEED: Piapro ignores Ctrl+Shift+] sent with the default Send/SendInput
+;     (all keys arrive in one instant batch). Sending it via SendEvent with a
+;     short key delay — paced like typing — is what Piapro registers.
+;  2. THE HELD ALT: to send a clean Ctrl+Shift+] we must drop your held Alt, but
+;     that also makes AHK think Alt is up, so Alt+wheel would fire only once. We
+;     re-press Alt afterwards (if you're still holding it) so you can hold Alt and
+;     keep scrolling to zoom continuously, just like horizontal zoom.
 ;
 ; Requires AutoHotkey v2  (https://www.autohotkey.com/)
 ; Repo:    https://github.com/KunqiK/DAW-Extension-Claude
@@ -26,57 +34,61 @@
 
 SetTitleMatchMode(2)   ; match a window whose title CONTAINS the given text
 
+g_VZooming := false    ; true only while a vertical-zoom keystroke is being sent
+
+; Vertical-zoom send speed. Piapro drops the keystroke if it arrives too fast,
+; so we pace it. 60/30 ms is confirmed-working; LOWER = snappier zoom and smoother
+; hold-and-scroll, but too low and Piapro may miss it. Tune these two to taste.
+g_ZoomDelay := 60      ; ms between keystrokes
+g_ZoomPress := 30      ; ms each key is held down
+
 A_IconTip := "Piapro <-> FL zoom hotkeys (active only in Piapro Studio)"
 TrayTip("In Piapro: Ctrl+wheel = horizontal zoom, Alt+wheel = vertical zoom (like FL Studio).",
-        "Piapro FL hotkeys loaded")
+        "Piapro FL hotkeys loaded  (v0.5)")
 
 ; --- These remaps fire ONLY while a 'Piapro Studio' window is active ----------
 ; "Piapro Studio" also matches FL's wrapper title "Piapro Studio VSTi (Master)",
 ; but never matches the FL Studio main window.
 #HotIf WinActive("Piapro Studio")
 
-    ; HORIZONTAL ZOOM — FL uses Ctrl+wheel; Piapro uses Ctrl+Shift+wheel.
-    ; {Blind} keeps your physically-held Ctrl down and just adds Shift,
-    ; so Ctrl+wheel is delivered to Piapro as Ctrl+Shift+wheel.
-    ; (Plain Ctrl+wheel does nothing in Piapro, so nothing is lost.)
-    ; A bare ^WheelUp does NOT fire when you also hold Shift yourself, so your
-    ; manual Ctrl+Shift+wheel still passes straight through.
+    ; HORIZONTAL ZOOM — FL Ctrl+wheel -> Piapro Ctrl+Shift+wheel.
+    ; {Blind} keeps your physically-held Ctrl down and just adds Shift.
     ^WheelUp::Send("{Blind}+{WheelUp}")     ; Ctrl + wheel up   -> zoom IN
     ^WheelDown::Send("{Blind}+{WheelDown}") ; Ctrl + wheel down -> zoom OUT
 
-    ; VERTICAL ZOOM — FL uses Alt+wheel; Piapro uses Ctrl+Shift+] / Ctrl+Shift+[.
-    ; Brackets are sent by SCAN CODE (sc01B = "]", sc01A = "[") so a held Shift
-    ; can't turn them into } / { — Piapro reads key+modifiers, so it sees the real
-    ; Ctrl+Shift+] / [. AHK auto-releases the hotkey's Alt during the Send.
-    ; (The ToolTip is a TEMPORARY diagnostic to confirm the hotkey is firing.)
-    !WheelUp::VZoom("{sc01B}", "IN")     ; Alt + wheel up   -> Ctrl+Shift+]
-    !WheelDown::VZoom("{sc01A}", "OUT")  ; Alt + wheel down -> Ctrl+Shift+[
-
-    ; DIAGNOSTIC test keys: press F8 / F9 in Piapro to fire a CLEAN Ctrl+Shift+] / [
-    ; with NO Alt and NO wheel. If F8/F9 zoom vertically but Alt+wheel doesn't, the
-    ; problem is the Alt/wheel handling. If F8/F9 also do nothing, Piapro is ignoring
-    ; the synthetic keystroke and we need a different approach.
-    F8::VZoomTest("{sc01B}", "IN")
-    F9::VZoomTest("{sc01A}", "OUT")
+    ; VERTICAL ZOOM — FL Alt+wheel -> Piapro Ctrl+Shift+] / [ (paced SendEvent).
+    !WheelUp::VZoom("]")     ; Alt + wheel up   -> Ctrl+Shift+]  (zoom IN)
+    !WheelDown::VZoom("[")   ; Alt + wheel down -> Ctrl+Shift+[  (zoom OUT)
 
 #HotIf   ; end Piapro-only context
 
-; --- Vertical-zoom senders (temporary diagnostics: tooltips + F8/F9 test keys) ---
-; Alt+wheel path: ONE atomic SendInput drops the held Alt, sends a clean
-; Ctrl+Shift+bracket, then restores Alt. Because SendInput is atomic, a physical
-; wheel notch can't leak in mid-send (that leak previously produced a stray
-; Ctrl+Shift+wheel = horizontal zoom).
-VZoom(bracket, label) {
-    Send("{Alt up}^+" bracket "{Alt down}")
-    Tip("Alt+wheel  ->  Ctrl+Shift+" (label == "IN" ? "]" : "[") "   (vertical " label ")")
-}
-; F8/F9 path: a CLEAN Ctrl+Shift+bracket with no Alt and no wheel, to test whether
-; Piapro accepts the synthetic keystroke at all.
-VZoomTest(bracket, label) {
-    Send("^+" bracket)
-    Tip("F-key test  ->  Ctrl+Shift+" (label == "IN" ? "]" : "[") "   (vertical " label ")")
-}
-Tip(text) {
-    ToolTip(text)
-    SetTimer(() => ToolTip(), -1100)          ; auto-clear the tooltip
+; While a vertical-zoom keystroke is mid-flight, swallow ANY further wheel notch
+; so a stray physical scroll can't leak out as Ctrl+Shift+wheel (= horizontal
+; zoom). The window is only the few ms of the send; normal scrolling is untouched.
+#HotIf WinActive("Piapro Studio") && g_VZooming
+    *WheelUp::return
+    *WheelDown::return
+#HotIf
+
+; --- Vertical-zoom sender -----------------------------------------------------
+VZoom(bracket) {
+    global g_VZooming, g_ZoomDelay, g_ZoomPress
+    Critical                        ; don't let another thread interrupt the send
+    prevDelay := A_KeyDelay
+    prevDur := A_KeyDuration
+    altHeld := GetKeyState("Alt", "P")   ; is Alt PHYSICALLY held right now?
+    g_VZooming := true
+    try {
+        Send("{Alt up}")                  ; drop the held Alt (it would taint the combo)
+        SetKeyDelay(g_ZoomDelay, g_ZoomPress)
+        SendEvent("^+" bracket)           ; clean, paced Ctrl+Shift+] or Ctrl+Shift+[
+    } finally {
+        ; Re-press Alt only if you're still holding it, so AHK stays in sync and
+        ; Alt+wheel keeps firing on the next notch (continuous zoom). If you let go
+        ; mid-send, we leave it up — no stuck Alt key.
+        if (altHeld && GetKeyState("Alt", "P"))
+            Send("{Alt down}")
+        SetKeyDelay(prevDelay, prevDur)
+        g_VZooming := false
+    }
 }
