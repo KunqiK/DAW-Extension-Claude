@@ -53,6 +53,12 @@ NIGHT = "#241f30"      # top of the piano-roll gradient
 EMBER = "#3a2f2a"      # warm tint at the right of the header gradient
 MINT = "#7fd6a6"       # "all lyrics filled" success tint
 EMPTY_BG = "#2a2030"   # row tint for a note still missing a lyric
+TEAL = "#2fd4c4"       # high-contrast cool accent (geometric decor)
+PINK = "#e8709f"       # geometric decor accent
+SKY = "#5bb8f0"        # geometric decor accent
+ROW_ALT = "#1f1b29"    # zebra-stripe row (alternates with ABYSS)
+# decorative accent cycle for the banner's low-poly field + chevron rule
+GEO_ACCENTS = (PURPLE, LILAC, SKY, TEAL, ORANGE, PINK)
 
 # Selectable UI font families (display name -> family). Tk falls back if missing.
 FONT_THEMES = {
@@ -212,19 +218,38 @@ class App(ctk.CTk):
         self._draw_piano_roll()
 
     def _draw_banner(self):
-        """Solid dark header: title + subtitle + a thin solid accent rule."""
+        """Geometric hero header: a tessellated low-poly triangle field (dark on the
+        left so the title pops, vivid accents to the right) + a chevron accent rule."""
         c = getattr(self, "banner", None)
         if c is None:
             return
         c.delete("all")
         w, h = max(c.winfo_width(), 1), int(c.cget("height"))
         fam = self.fonts["body"][0]
-        c.create_rectangle(0, 0, w, h, fill=BG_WIN, outline="")          # solid dark
-        c.create_text(22, h // 2 - 9, anchor="w", text="MADE BY M. Y.",
-                      fill=ORANGE, font=(fam, 24, "bold"))
-        c.create_text(24, h // 2 + 18, anchor="w", fill=PAPER, font=(fam, 11),
+        c.create_rectangle(0, 0, w, h, fill=BG_WIN, outline="")
+
+        cols = 16                                     # low-poly triangle field
+        cw = w / cols
+        for i in range(cols):
+            x0, x1 = i * cw, (i + 1) * cw
+            t = i / (cols - 1)                        # 0 (left, dark) → 1 (right, vivid)
+            depth = 0.10 + 0.55 * t
+            a = _lerp(BG_WIN, GEO_ACCENTS[i % len(GEO_ACCENTS)], depth)
+            b = _lerp(BG_WIN, GEO_ACCENTS[(i + 2) % len(GEO_ACCENTS)], depth * 0.7)
+            c.create_polygon(x0, 0, x1, 0, x0, h, fill=a, outline="")     # upper-left tri
+            c.create_polygon(x1, 0, x1, h, x0, h, fill=b, outline="")     # lower-right tri
+
+        c.create_text(24, h * 0.40, anchor="w", text="MADE BY M. Y.",
+                      fill=ORANGE, font=(fam, 26, "bold"))
+        c.create_text(26, h * 0.74, anchor="w", fill=PAPER, font=(fam, 12),
                       text="midi → vsqx   ·   re-lyric   ·   keep your tuning")
-        c.create_rectangle(0, h - 3, w, h, fill=ORANGE, outline="")      # solid accent rule
+
+        n = 30                                        # chevron accent rule along the bottom
+        cwn = w / n
+        for i in range(n):
+            x0, xm, x1 = i * cwn, (i + 0.5) * cwn, (i + 1) * cwn
+            c.create_polygon(x0, h, xm, h - 8, x1, h,
+                             fill=GEO_ACCENTS[i % len(GEO_ACCENTS)], outline="")
 
     # ---- UI construction ---------------------------------------------------
     def _btn(self, master, text, cmd, kind="secondary", **kw):
@@ -245,7 +270,7 @@ class App(ctk.CTk):
 
     def _build_ui(self):
         # gradient banner (decorative header)
-        self.banner = tk.Canvas(self, height=66, bg=BG_WIN, highlightthickness=0)
+        self.banner = tk.Canvas(self, height=80, bg=BG_WIN, highlightthickness=0)
         self.banner.pack(side="top", fill="x")
         self.banner.bind("<Configure>", lambda e: self._draw_banner())
 
@@ -328,12 +353,13 @@ class App(ctk.CTk):
         self.edit_hint = ctk.CTkLabel(edit, text="", font=self.cf_small, text_color=PURPLE)
         self.edit_hint.pack(side="right", padx=(10, 4))
         # zoom controls (always active — view, not editing). Also Ctrl/Alt+wheel on the roll.
+        # H = horizontal (time), V = vertical (pitch).
         self._btn(edit, "＋", lambda: self.zoom_roll_v(1.3), kind="ghost", width=30).pack(side="right", padx=1)
         self._btn(edit, "－", lambda: self.zoom_roll_v(1 / 1.3), kind="ghost", width=30).pack(side="right", padx=1)
-        ctk.CTkLabel(edit, text="↕", font=self.cf_bold, text_color=LILAC).pack(side="right", padx=(6, 2))
+        ctk.CTkLabel(edit, text="V", font=self.cf_bold, text_color=TEAL).pack(side="right", padx=(8, 2))
         self._btn(edit, "＋", lambda: self.zoom_roll(1.25), kind="ghost", width=30).pack(side="right", padx=1)
         self._btn(edit, "－", lambda: self.zoom_roll(1 / 1.25), kind="ghost", width=30).pack(side="right", padx=1)
-        ctk.CTkLabel(edit, text="Zoom ↔", font=self.cf_body, text_color=LILAC).pack(side="right", padx=(0, 2))
+        ctk.CTkLabel(edit, text="Zoom  H", font=self.cf_body, text_color=LILAC).pack(side="right", padx=(0, 2))
 
         # status (bottom) then the table fills the middle
         self.status = ctk.CTkLabel(self, text="› open a MIDI, or Import VSQx to re-lyric — "
@@ -351,6 +377,8 @@ class App(ctk.CTk):
         for c in cols:
             self.tree.heading(c, text=heads[c])
             self.tree.column(c, width=widths[c], anchor=("w" if c == "lyric" else "center"))
+        self.tree.tag_configure("odd", background=ABYSS)
+        self.tree.tag_configure("even", background=ROW_ALT)     # zebra striping
         self.tree.tag_configure("empty", background=EMPTY_BG, foreground=PLUM)
         vsb = ctk.CTkScrollbar(tablecard, command=self.tree.yview,
                                button_color=PURPLE, button_hover_color=LILAC)
@@ -454,12 +482,30 @@ class App(ctk.CTk):
                               font=self.fonts["small"], text=n.lyric)
         self._draw_legend(c)
 
+    _FACET_SHADES = ("#0c0a12", "#161320", "#201b2e", "#2a2440")   # subtle dark-plum ramp
+
     def _draw_roll_backdrop(self, c, w, h):
-        """Backdrop behind the notes (night-purple → black gradient)."""
-        bands = 24
-        for i in range(bands):
-            c.create_rectangle(0, h * i / bands, w, h * (i + 1) / bands + 1,
-                               fill=_lerp(NIGHT, INK, i / (bands - 1)), outline="")
+        """Low-poly faceted backdrop: a tessellation of triangles in close dark-plum
+        shades (texture, not noise) plus two faint accent facets in the corners. Kept
+        deliberately low-contrast so the orange/lilac notes and labels stay legible."""
+        c.create_rectangle(0, 0, w, h, fill=INK, outline="")
+        cell = 130.0
+        cols = max(1, int(w // cell) + 1)
+        rows = max(2, int(h // cell) + 1)
+        cw, ch = w / cols, h / rows
+        shades = self._FACET_SHADES
+        for r in range(rows):
+            for k in range(cols):
+                x0, x1, y0, y1 = k * cw, (k + 1) * cw, r * ch, (r + 1) * ch
+                c.create_polygon(x0, y0, x1, y0, x0, y1,
+                                 fill=shades[(r + k) % len(shades)], outline="")
+                c.create_polygon(x1, y0, x1, y1, x0, y1,
+                                 fill=shades[(r + k + 1) % len(shades)], outline="")
+        # faint high-contrast accent facets in opposite corners
+        c.create_polygon(0, 0, w * 0.16, 0, 0, h * 0.55,
+                         fill=_lerp(INK, PURPLE, 0.22), outline="")
+        c.create_polygon(w, h, w - min(260, w * 0.16), h, w, h * 0.45,
+                         fill=_lerp(INK, TEAL, 0.16), outline="")
 
     def _draw_empty_roll(self, c, w, h):
         c.create_text(20, 18, anchor="nw", fill=LILAC, font=self.fonts["bold"], text="♪  piano-roll")
@@ -940,9 +986,13 @@ class App(ctk.CTk):
                  "altered — there, clicking a note just highlights its syllable.)"),
             ("h", "The piano-roll"),
             ("", "The strip up top shows your notes. ORANGE = a syllable's first note; "
-                 "LAVENDER = a held/tuning note that continues it. Click a row to light up "
-                 "and locate that syllable. Zoom in/out with the Zoom −/＋ buttons or "
-                 "Ctrl + mouse-wheel over the roll (just like FL Studio's horizontal zoom)."),
+                 "LAVENDER = a held/tuning note that continues it. Click a row (or a note) "
+                 "to light it up and locate it."),
+            ("", "Zoom & scroll, just like FL Studio: the Zoom H −/＋ buttons or Ctrl+wheel "
+                 "zoom time (horizontal); the V −/＋ buttons or Alt+wheel zoom pitch "
+                 "(vertical). Plain mouse-wheel scrolls up/down, Shift+wheel scrolls "
+                 "sideways. A vertical scrollbar appears when the notes are taller than "
+                 "the view, and the whole roll grows when you enlarge the window."),
         ]
 
     def _choose_clip(self, clips, preselect=0,
@@ -1210,7 +1260,7 @@ class App(ctk.CTk):
         for i, n in enumerate(self.song.notes):
             bar = n.start // tpm + 1
             beat = (n.start % tpm) // beat_ticks + 1
-            tags = () if n.lyric.strip() else ("empty",)
+            tags = (("even",) if i % 2 else ("odd",)) if n.lyric.strip() else ("empty",)
             self.tree.insert("", "end", tags=tags, values=(i + 1, "%d.%d" % (bar, beat),
                                                             midi_note_name(n.key), n.dur, n.lyric))
         self._draw_piano_roll()
@@ -1244,8 +1294,11 @@ class App(ctk.CTk):
     def _commit(self, iid, entry, move=0):
         value = entry.get()
         self.tree.set(iid, "lyric", value)
-        self.tree.item(iid, tags=(() if value.strip() else ("empty",)))
         idx = int(self.tree.set(iid, "idx")) - 1
+        if value.strip():
+            self.tree.item(iid, tags=(("even",) if idx % 2 else ("odd",)))
+        else:
+            self.tree.item(iid, tags=("empty",))
         if self.song and 0 <= idx < len(self.song.notes):
             self.song.notes[idx].lyric = value
         self._refresh_info()
