@@ -24,3 +24,16 @@ Desktop.ini
 # Local scratch / output (keep committed samples/ though)
 scratch/
 *.log
+
+# PyInstaller build output (the shareable .exe lives in dist/)
+build/
+dist/
+*.spec
+
+# Shared screenshots dropped in the repo root
+/*.png
+
+# Personal test exports in samples/ (the canonical demo samples stay tracked)
+midi2vsqx/samples/*_relyric*.vsqx
+midi2vsqx/samples/test*.vsqx
+midi2vsqx/samples/testing*.vsqx
