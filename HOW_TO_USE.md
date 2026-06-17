@@ -34,7 +34,7 @@ Put lyrics on a melody for **Piapro Studio** (VOCALOID). Two jobs:
 | **▶ Play / Out / Sound** | Hear it — through Windows, or routed to **FL Studio** (see Playback). |
 | **Font** | Change the look. **? Help** opens the full in-app guide. |
 
-The **piano-roll** strip shows your notes: **orange** = a syllable's start, **lavender** = a held/tuning note. Click a row (or a note) to find/select it. Zoom in/out with **Zoom −/＋** or **Ctrl + mouse-wheel** over the roll.
+The **piano-roll** shows your notes: **orange** = a syllable's start, **lavender** = a held/tuning note. Click a row (or a note) to find/select it. **Zoom** like FL Studio — **Zoom H −/＋** or **Ctrl + wheel** for time (horizontal), **V −/＋** or **Alt + wheel** for pitch (vertical). Plain wheel scrolls up/down, **Shift + wheel** sideways; a scrollbar appears when notes are taller than the view, and the roll grows when you enlarge the window.
 
 ### Editing a melody (Open MIDI mode)
 Right on the piano-roll you can: **drag** a note to move/re-pitch it · drag its **right edge** to resize · **double-click empty space** to add a note · select a row and press **Delete** to remove · **Transpose all** with −8va/−1/+1/+8va (or Shift+↑/↓, Ctrl+↑/↓). Made a mistake? **Undo/Redo** with Ctrl+Z / Ctrl+Y. *(Editing is off when re-wording a tuned file, so your Piapro tuning is never altered — there, clicking a note just highlights its syllable.)*
