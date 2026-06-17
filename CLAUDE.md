@@ -147,5 +147,12 @@ A personal toolkit to make **Piapro Studio** (Crypton VOCALOID editor, runs as a
     - 🐞 **Gotcha logged:** a Write hit an `fsync` error and silently dropped the `__init__` font/edit-state lines while later edits referenced them → `AttributeError: no attribute 'fonts'` at construct. Re-added the state; **after an fsync error, re-Read the file before trusting it.**
     - **Tested:** compiles; headless build + font switch (Bahnschrift/Consolas) + MIDI load + hit-test ('move') + delete (7→6) + 28 help lines all pass. Launched for user.
     - ✅ **User confirmed:** UI looks good; re-lyric round-trip works in Piapro.
-  - **→ COMMIT #3 incoming** (this milestone).
-  - **Possible next:** click-a-note-to-select on the roll; add-note; remember last MIDI port; per-syllable vowel control for tails.
+  - ✅ **COMMIT #3 pushed** (`eea06f9..43c25a7`): note editing, font picker, help spacing, relabels.
+  - ✅ **MILESTONE 6 — gradients + Verdana default + sharing (.exe) + walkthrough.**
+    - **Futuristic gradients** (`app.py`): `_lerp()` colour blend; a **gradient banner** canvas (`_draw_banner`: ink→plum→ember header with title/subtitle + a purple→orange→lilac neon rule), and a **night-purple→black gradient backdrop** in the piano-roll. Font picker + Help moved into the toolbar (banner is now decorative). New shades `NIGHT #241f30`, `EMBER #3a2f2a`.
+    - **Default font → Verdana** (user's pick).
+    - **Sharing:** `midi2vsqx/build_exe.bat` (PyInstaller `--onefile --windowed`, hidden-imports `mido.backends.rtmidi`+`rtmidi`). **Built + smoke-tested `dist/MadeByMY-LyricTool.exe` (9 MB, runs standalone)** — friend needs no Python. `.gitignore` now excludes `build/`, `dist/`, `*.spec`, root `*.png`, and `samples/*_relyric*/test*/testing*` exports.
+    - **Walkthrough:** `HOW_TO_USE.md` (root) — dummy-proof setup (exe or source) + a function tour + workflows + FL routing; points to in-app Help.
+    - **Tested:** compiles; headless construct draws banner (130 items) + roll gradient; font switch redraws; exe launches & stays alive.
+  - **Housekeeping (user):** ✅ added `.gitignore` rules; ⏸️ **holding** FL-routing audio verification per user.
+  - **Possible next:** click-a-note-to-select / add-note on the roll; remember last MIDI port; per-syllable vowel control for tails.
