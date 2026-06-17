@@ -133,7 +133,9 @@ class App(ctk.CTk):
         self._pad = 16              # piano-roll inner padding
         self._row_h = 8.0           # piano-roll pixels per semitone (set when drawn)
         self._kmax = 84             # top pitch on the roll (set when drawn)
-        self._drag = None           # active note drag {note, mode, ...}
+        self._drag = None           # active note drag {note, mode, item, ...}
+        self._roll_redraw_job = None    # debounce handle for roll <Configure> redraws
+        self._banner_redraw_job = None  # debounce handle for banner <Configure> redraws
         self._editor = None         # (Entry, row_iid) while editing a lyric cell
         self._undo = []             # snapshots of song.notes before each structural edit
         self._redo = []
@@ -346,7 +348,7 @@ class App(ctk.CTk):
         # gradient banner (decorative header)
         self.banner = tk.Canvas(self, height=80, bg=BG_WIN, highlightthickness=0)
         self.banner.pack(side="top", fill="x")
-        self.banner.bind("<Configure>", lambda e: self._draw_banner())
+        self.banner.bind("<Configure>", lambda e: self._schedule_banner_redraw())
 
         # toolbar card — file actions + font / help
         bar = ctk.CTkFrame(self, fg_color=BG_CARD, corner_radius=14)
@@ -400,7 +402,7 @@ class App(ctk.CTk):
                                button_color=PURPLE, button_hover_color=LILAC)
         self.canvas.configure(xscrollcommand=hsb.set)
         hsb.pack(side="top", fill="x", padx=10, pady=(0, 4))
-        self.canvas.bind("<Configure>", lambda e: self._draw_piano_roll())
+        self.canvas.bind("<Configure>", lambda e: self._schedule_roll_redraw())
         self.canvas.bind("<Button-1>", self._roll_press)
         self.canvas.bind("<B1-Motion>", self._roll_drag)
         self.canvas.bind("<ButtonRelease-1>", self._roll_release)
@@ -494,6 +496,26 @@ class App(ctk.CTk):
             have = True
         return flags
 
+    def _schedule_roll_redraw(self):
+        """Coalesce rapid <Configure> events (window resize) into a single redraw, so
+        dragging the window edge doesn't fire a heavy full redraw on every pixel."""
+        if self._roll_redraw_job is not None:
+            self.after_cancel(self._roll_redraw_job)
+        self._roll_redraw_job = self.after(33, self._do_roll_redraw)
+
+    def _do_roll_redraw(self):
+        self._roll_redraw_job = None
+        self._draw_piano_roll()
+
+    def _schedule_banner_redraw(self):
+        if self._banner_redraw_job is not None:
+            self.after_cancel(self._banner_redraw_job)
+        self._banner_redraw_job = self.after(33, self._do_banner_redraw)
+
+    def _do_banner_redraw(self):
+        self._banner_redraw_job = None
+        self._draw_banner()
+
     def _roll_view_h(self):
         """Current visible height of the roll canvas (falls back to its requested
         height before the window is laid out / in headless tests)."""
@@ -563,9 +585,9 @@ class App(ctk.CTk):
         shades (texture, not noise) plus two faint accent facets in the corners. Kept
         deliberately low-contrast so the orange/lilac notes and labels stay legible."""
         c.create_rectangle(0, 0, w, h, fill=INK, outline="")
-        cell = 130.0
-        cols = max(1, int(w // cell) + 1)
-        rows = max(2, int(h // cell) + 1)
+        cell = 160.0                                  # capped so a long/tall roll stays cheap
+        cols = max(1, min(12, int(w // cell) + 1))
+        rows = max(2, min(6, int(h // cell) + 1))
         cw, ch = w / cols, h / rows
         shades = self._FACET_SHADES
         for r in range(rows):
@@ -747,7 +769,8 @@ class App(ctk.CTk):
         self._select_note_row(n)                 # click-to-select in any mode
         if not self._editable():
             return
-        self._drag = {"note": n, "mode": mode, "cx": cx, "cy": cy,
+        item = next((it for it, nn, _l in self._note_items if nn is n), None)
+        self._drag = {"note": n, "mode": mode, "item": item, "cx": cx, "cy": cy,
                       "start0": n.start, "key0": n.key, "dur0": n.dur,
                       "pre": self._snapshot()}
 
@@ -763,7 +786,15 @@ class App(ctk.CTk):
         else:
             n.start = max(0, d["start0"] + dtick)
             n.key = max(0, min(127, d["key0"] - int(round((cy - d["cy"]) / self._row_h))))
-        self._draw_piano_roll()
+        # Move just the dragged rectangle (cheap) instead of redrawing the whole roll
+        # every motion event; the full redraw happens once on release.
+        if d.get("item") is not None:
+            x0 = self._pad + (n.start - self._roll_t0) * self._ppt
+            x1 = self._pad + (n.start + n.dur - self._roll_t0) * self._ppt
+            y0 = self._pad + (self._kmax - n.key) * self._row_h
+            self.canvas.coords(d["item"], x0, y0, max(x0 + 2, x1), y0 + self._row_h)
+        else:
+            self._draw_piano_roll()
 
     def _roll_release(self, _e):
         d = self._drag
