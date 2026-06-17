@@ -14,6 +14,7 @@ from tkinter import ttk, filedialog, messagebox
 
 from midi_reader import read_midi, midi_note_name
 from vsqx_writer import write_vsqx, ticks_per_measure
+from vsqx_reader import read_moras_as_song, relyric_vsqx
 
 
 class App(tk.Tk):
@@ -23,8 +24,10 @@ class App(tk.Tk):
         self.geometry("780x540")
         self.minsize(620, 360)
 
-        self.song = None        # Song from midi_reader
+        self.song = None        # Song (from a MIDI import, or moras of a tuned .vsqx)
         self.midi_path = None
+        self.export_mode = "midi"   # "midi" = build new .vsqx; "relyric" = edit a tuned one
+        self.vsqx_path = None       # the tuned source file, in re-lyric mode
         self._editor = None     # (Entry, row_iid) while editing a lyric cell
 
         self._build_ui()
@@ -35,6 +38,7 @@ class App(tk.Tk):
         toolbar = ttk.Frame(self, padding=6)
         toolbar.pack(side="top", fill="x")
         ttk.Button(toolbar, text="Open MIDI… (Ctrl+O)", command=self.open_midi).pack(side="left")
+        ttk.Button(toolbar, text="Re-lyric tuned VSQX… (Ctrl+R)", command=self.open_tuned_vsqx).pack(side="left", padx=(6, 0))
         ttk.Button(toolbar, text="Export VSQX… (Ctrl+S)", command=self.export_vsqx).pack(side="left", padx=(6, 0))
         self.info = ttk.Label(toolbar, text="No file loaded.")
         self.info.pack(side="left", padx=12)
@@ -62,6 +66,7 @@ class App(tk.Tk):
 
     def _bind_keys(self):
         self.bind("<Control-o>", lambda e: self.open_midi())
+        self.bind("<Control-r>", lambda e: self.open_tuned_vsqx())
         self.bind("<Control-s>", lambda e: self.export_vsqx())
 
     # ---- File actions ------------------------------------------------------
@@ -77,6 +82,8 @@ class App(tk.Tk):
             messagebox.showerror("Could not read MIDI", str(exc))
             return
         self.midi_path = path
+        self.export_mode = "midi"
+        self.vsqx_path = None
         self._populate()
         self.info.config(text="%s  —  %d notes, %s BPM, %d/%d" % (
             os.path.basename(path), len(self.song.notes), self.song.bpm,
@@ -87,11 +94,47 @@ class App(tk.Tk):
             self.tree.selection_set(first)
             self.tree.focus(first)
 
+    def open_tuned_vsqx(self):
+        """Open a tuned .vsqx to put NEW lyrics on the same melody, keeping the tuning.
+        Each row is one mora (a sung syllable); type the new word over it and export."""
+        path = filedialog.askopenfilename(
+            title="Open a tuned VSQX to re-lyric",
+            filetypes=[("VOCALOID VSQX", "*.vsqx"), ("All files", "*.*")])
+        if not path:
+            return
+        try:
+            self.song = read_moras_as_song(path)
+        except Exception as exc:  # noqa: BLE001 - surface any parse error to the user
+            messagebox.showerror("Could not read VSQX", str(exc))
+            return
+        if not self.song.notes:
+            messagebox.showwarning(
+                "No moras found",
+                "This .vsqx has no sung syllables to re-lyric.\n"
+                "(Open the tuned file you exported from Piapro.)")
+            return
+        self.export_mode = "relyric"
+        self.vsqx_path = path
+        self.midi_path = path
+        self._populate()
+        self.info.config(text="%s  —  %d moras, %s BPM, %d/%d  (re-lyric: tuning preserved)" % (
+            os.path.basename(path), len(self.song.notes), self.song.bpm,
+            self.song.numerator, self.song.denominator))
+        self.status.config(
+            text="Type the NEW lyric for each mora (Enter = save & next). "
+                 "Export keeps every pitch/split you tuned.")
+        first = self.tree.get_children()[0]
+        self.tree.selection_set(first)
+        self.tree.focus(first)
+
     def export_vsqx(self):
         if not self.song or not self.song.notes:
             messagebox.showwarning("Nothing to export", "Open a MIDI file first.")
             return
         self._commit_open_editor()
+        if self.export_mode == "relyric":
+            self._export_relyric()
+            return
         default = os.path.splitext(os.path.basename(self.midi_path or "lyrics"))[0] + ".vsqx"
         path = filedialog.asksaveasfilename(
             title="Export VSQX", defaultextension=".vsqx", initialfile=default,
@@ -110,6 +153,30 @@ class App(tk.Tk):
             "Saved:\n%s\n\nIn Piapro Studio:\n"
             "1) File > Import > VSQX\n"
             "2) If every note sings 'a', run Job > Convert phonemes to match language." % path)
+
+    def _export_relyric(self):
+        """Write the tuned source file back out with the new lyrics, tuning intact."""
+        default = os.path.splitext(os.path.basename(self.vsqx_path))[0] + "_relyric.vsqx"
+        path = filedialog.asksaveasfilename(
+            title="Export re-lyriced VSQX", defaultextension=".vsqx", initialfile=default,
+            filetypes=[("VOCALOID VSQX", "*.vsqx"), ("All files", "*.*")])
+        if not path:
+            return
+        new_lyrics = [n.lyric for n in self.song.notes]
+        try:
+            changed = relyric_vsqx(self.vsqx_path, new_lyrics, path)
+        except Exception as exc:  # noqa: BLE001
+            messagebox.showerror("Re-lyric failed", str(exc))
+            return
+        self.status.config(text="Re-lyriced %d mora(s) → %s. In Piapro: File > Import > VSQX."
+                                % (changed, os.path.basename(path)))
+        messagebox.showinfo(
+            "Re-lyriced",
+            "Saved:\n%s\n\nAll your tuning (pitches & note splits) is preserved.\n\n"
+            "In Piapro Studio:\n"
+            "1) File > Import > VSQX\n"
+            "2) Run Job > Convert phonemes to match language so the new words sing right."
+            % path)
 
     # ---- Table + inline lyric editing -------------------------------------
     def _populate(self):
