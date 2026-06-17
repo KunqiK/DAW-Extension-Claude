@@ -12,6 +12,7 @@ import copy
 import json
 import os
 import threading
+import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
@@ -83,6 +84,16 @@ def _lerp(c1, c2, t):
     return "#%02x%02x%02x" % tuple(round(a[i] + (b[i] - a[i]) * t) for i in range(3))
 
 
+def _clamp01(x):
+    return max(0.0, min(1.0, x))
+
+
+def _ease(t):
+    """Ease-out cubic — fast then gentle, for smooth slide-ins."""
+    t = _clamp01(t)
+    return 1 - (1 - t) ** 3
+
+
 class App(ctk.CTk):
     _PPT = 0.06       # default piano-roll zoom: pixels per tick (~115 px per 4/4 bar)
     _PPT_MIN = 0.015  # horizontal zoom-out / zoom-in bounds
@@ -99,6 +110,13 @@ class App(ctk.CTk):
         self.geometry(self._settings.get("geometry") or "1200x820")
         self.minsize(960, 600)
         self.configure(fg_color=BG_WIN)
+
+        self._intro_running = False     # opening animation state
+        self._intro_p = 1.0             # progress 0→1 (1 = settled / no animation)
+        try:
+            self.attributes("-alpha", 0.0)   # stay hidden until the intro fades us in
+        except tk.TclError:
+            pass
 
         self.song = None        # Song (from a MIDI import, or moras of a tuned .vsqx)
         self.midi_path = None
@@ -137,6 +155,7 @@ class App(ctk.CTk):
         self._build_ui()
         self._bind_keys()
         self._apply_saved_selections()
+        self.after(20, self._start_intro)
 
     # ---- settings (remembered between runs) --------------------------------
     @staticmethod
@@ -222,37 +241,89 @@ class App(ctk.CTk):
 
     def _draw_banner(self):
         """Geometric hero header: a tessellated low-poly triangle field (dark on the
-        left so the title pops, vivid accents to the right) + a chevron accent rule."""
+        left so the title pops, vivid accents to the right) + a chevron accent rule.
+
+        Doubles as the opening animation: with `_intro_p` < 1 the triangle columns
+        drop in (staggered left→right), the title slides in from the left, the
+        subtitle fades up, and the chevron rule sweeps across."""
         c = getattr(self, "banner", None)
         if c is None:
             return
         c.delete("all")
         w, h = max(c.winfo_width(), 1), int(c.cget("height"))
         fam = self.fonts["body"][0]
+        p = self._intro_p if self._intro_running else 1.0
         c.create_rectangle(0, 0, w, h, fill=BG_WIN, outline="")
 
         cols = 16                                     # low-poly triangle field
         cw = w / cols
         for i in range(cols):
+            colp = _ease(_clamp01((p - (i / cols) * 0.45) / 0.55))   # staggered drop-in
+            dy = -(1.0 - colp) * (h * 1.5)
             x0, x1 = i * cw, (i + 1) * cw
             t = i / (cols - 1)                        # 0 (left, dark) → 1 (right, vivid)
-            depth = 0.10 + 0.55 * t
+            depth = (0.10 + 0.55 * t) * colp
             a = _lerp(BG_WIN, GEO_ACCENTS[i % len(GEO_ACCENTS)], depth)
             b = _lerp(BG_WIN, GEO_ACCENTS[(i + 2) % len(GEO_ACCENTS)], depth * 0.7)
-            c.create_polygon(x0, 0, x1, 0, x0, h, fill=a, outline="")     # upper-left tri
-            c.create_polygon(x1, 0, x1, h, x0, h, fill=b, outline="")     # lower-right tri
+            c.create_polygon(x0, dy, x1, dy, x0, h + dy, fill=a, outline="")
+            c.create_polygon(x1, dy, x1, h + dy, x0, h + dy, fill=b, outline="")
 
-        c.create_text(24, h * 0.40, anchor="w", text="MADE BY M. Y.",
-                      fill=ORANGE, font=(fam, 26, "bold"))
-        c.create_text(26, h * 0.74, anchor="w", fill=PAPER, font=(fam, 12),
+        tp = _ease(_clamp01((p - 0.12) / 0.6))        # title slides in from the left
+        tx = 24 - (1.0 - tp) * 380
+        tcol = _lerp(BG_WIN, ORANGE, _clamp01((p - 0.12) / 0.45))
+        c.create_text(tx, h * 0.40, anchor="w", text="MADE BY M. Y.",
+                      fill=tcol, font=(fam, 26, "bold"))
+        sp = _clamp01((p - 0.45) / 0.5)               # subtitle fades + slides slightly later
+        sx = 26 - (1.0 - _ease(sp)) * 140
+        c.create_text(sx, h * 0.74, anchor="w", fill=_lerp(BG_WIN, PAPER, sp), font=(fam, 12),
                       text="midi → vsqx   ·   re-lyric   ·   keep your tuning")
 
-        n = 30                                        # chevron accent rule along the bottom
+        n = 30                                        # chevron accent rule sweeps in L→R
         cwn = w / n
+        reveal = _ease(p) * (n + 4)
         for i in range(n):
+            if i > reveal:
+                break
             x0, xm, x1 = i * cwn, (i + 0.5) * cwn, (i + 1) * cwn
             c.create_polygon(x0, h, xm, h - 8, x1, h,
                              fill=GEO_ACCENTS[i % len(GEO_ACCENTS)], outline="")
+
+    # ---- opening animation -------------------------------------------------
+    _INTRO_DUR = 1.0       # seconds
+
+    def _start_intro(self):
+        """Kick off the opening animation (header assembles + window fades up)."""
+        self._intro_running = True
+        self._intro_p = 0.0
+        self._intro_t0 = time.perf_counter()
+        self.after(1800, self._finish_intro)      # safety net: never stay hidden
+        self._intro_tick()
+
+    def _intro_tick(self):
+        if not self._intro_running:
+            return
+        p = min(1.0, (time.perf_counter() - self._intro_t0) / self._INTRO_DUR)
+        self._intro_p = p
+        try:
+            self.attributes("-alpha", _clamp01(0.12 + p * 1.3))   # fade the window up
+        except tk.TclError:
+            pass
+        self._draw_banner()
+        if p < 1.0:
+            self.after(16, self._intro_tick)       # ~60 fps
+        else:
+            self._finish_intro()
+
+    def _finish_intro(self):
+        if not self._intro_running:
+            return
+        self._intro_running = False
+        self._intro_p = 1.0
+        try:
+            self.attributes("-alpha", 1.0)
+        except tk.TclError:
+            pass
+        self._draw_banner()
 
     # ---- UI construction ---------------------------------------------------
     def _btn(self, master, text, cmd, kind="secondary", **kw):
