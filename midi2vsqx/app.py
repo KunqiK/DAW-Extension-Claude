@@ -144,26 +144,19 @@ class App(ctk.CTk):
         self._draw_piano_roll()
 
     def _draw_banner(self):
-        """Gradient header: title + subtitle + a neon gradient rule."""
+        """Solid dark header: title + subtitle + a thin solid accent rule."""
         c = getattr(self, "banner", None)
         if c is None:
             return
         c.delete("all")
         w, h = max(c.winfo_width(), 1), int(c.cget("height"))
         fam = self.fonts["body"][0]
-        steps = 64
-        for i in range(steps):                       # ink → plum → warm ember
-            t = i / (steps - 1)
-            col = _lerp(INK, PURPLE, t / 0.65) if t < 0.65 else _lerp(PURPLE, EMBER, (t - 0.65) / 0.35)
-            c.create_rectangle(w * i / steps, 0, w * (i + 1) / steps + 1, h, fill=col, outline="")
+        c.create_rectangle(0, 0, w, h, fill=BG_WIN, outline="")          # solid dark
         c.create_text(22, h // 2 - 9, anchor="w", text="MADE BY M. Y.",
                       fill=ORANGE, font=(fam, 24, "bold"))
         c.create_text(24, h // 2 + 18, anchor="w", fill=PAPER, font=(fam, 11),
                       text="midi → vsqx   ·   re-lyric   ·   keep your tuning")
-        for i in range(steps):                       # neon rule: purple → orange → lilac
-            t = i / (steps - 1)
-            col = _lerp(PURPLE, ORANGE, t * 2) if t < 0.5 else _lerp(ORANGE, LILAC, (t - 0.5) * 2)
-            c.create_rectangle(w * i / steps, h - 3, w * (i + 1) / steps + 1, h, fill=col, outline="")
+        c.create_rectangle(0, h - 3, w, h, fill=ORANGE, outline="")      # solid accent rule
 
     # ---- UI construction ---------------------------------------------------
     def _btn(self, master, text, cmd, kind="secondary", **kw):
@@ -184,7 +177,7 @@ class App(ctk.CTk):
 
     def _build_ui(self):
         # gradient banner (decorative header)
-        self.banner = tk.Canvas(self, height=66, bg=INK, highlightthickness=0)
+        self.banner = tk.Canvas(self, height=66, bg=BG_WIN, highlightthickness=0)
         self.banner.pack(side="top", fill="x")
         self.banner.bind("<Configure>", lambda e: self._draw_banner())
 
@@ -277,6 +270,11 @@ class App(ctk.CTk):
 
     # ---- piano-roll visualizer --------------------------------------------
     def _lead_flags(self, notes):
+        """Which notes start a syllable (drawn orange) vs. hold the previous one (lilac).
+        In MIDI mode every note is its own syllable — only a tuned/re-lyric clip has the
+        'ー'/bare-vowel continuation tails that the heuristic looks for."""
+        if self.export_mode == "midi":
+            return [True] * len(notes)
         flags, have = [], False
         for n in notes:
             flags.append(not (have and is_continuation(n.lyric)))
