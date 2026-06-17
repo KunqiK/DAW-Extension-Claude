@@ -8,6 +8,7 @@ Run:  python app.py      (needs Python 3.9+ and `pip install -r requirements.txt
 """
 from __future__ import annotations
 
+import copy
 import os
 import threading
 import tkinter as tk
@@ -73,6 +74,8 @@ def _lerp(c1, c2, t):
 class App(ctk.CTk):
     _PPT = 0.06       # piano-roll pixels per tick (~115 px per 4/4 bar)
     _GRID = 120       # note-edit time snap (1/16 note, in ticks)
+    _DEFAULT_DUR = VSQ_RESOLUTION   # new note length when added (one beat = 480 ticks)
+    _UNDO_MAX = 100   # how many edit steps we remember
 
     def __init__(self):
         super().__init__()
@@ -96,6 +99,8 @@ class App(ctk.CTk):
         self._kmax = 84             # top pitch on the roll (set when drawn)
         self._drag = None           # active note drag {note, mode, ...}
         self._editor = None         # (Entry, row_iid) while editing a lyric cell
+        self._undo = []             # snapshots of song.notes before each structural edit
+        self._redo = []
         self._play_thread = None    # background MIDI playback thread
         self._stop = threading.Event()
 
@@ -227,11 +232,29 @@ class App(ctk.CTk):
         hsb = ctk.CTkScrollbar(rollcard, orientation="horizontal", command=self.canvas.xview,
                                button_color=PURPLE, button_hover_color=LILAC)
         self.canvas.configure(xscrollcommand=hsb.set)
-        hsb.pack(side="top", fill="x", padx=10, pady=(0, 10))
+        hsb.pack(side="top", fill="x", padx=10, pady=(0, 4))
         self.canvas.bind("<Configure>", lambda e: self._draw_piano_roll())
         self.canvas.bind("<Button-1>", self._roll_press)
         self.canvas.bind("<B1-Motion>", self._roll_drag)
         self.canvas.bind("<ButtonRelease-1>", self._roll_release)
+        self.canvas.bind("<Double-Button-1>", self._roll_add)
+
+        # edit bar — undo/redo + transpose + a hint (MIDI mode only)
+        edit = ctk.CTkFrame(rollcard, fg_color="transparent")
+        edit.pack(side="top", fill="x", padx=10, pady=(0, 10))
+        self.undo_btn = self._btn(edit, "↶ Undo", self.undo, kind="ghost", width=80)
+        self.undo_btn.pack(side="left", padx=(0, 4))
+        self.redo_btn = self._btn(edit, "↷ Redo", self.redo, kind="ghost", width=80)
+        self.redo_btn.pack(side="left", padx=(0, 14))
+        ctk.CTkLabel(edit, text="Transpose all", font=self.cf_body,
+                     text_color=LILAC).pack(side="left", padx=(0, 6))
+        self._transpose_btns = []
+        for label, semis in (("−8va", -12), ("−1", -1), ("+1", 1), ("+8va", 12)):
+            b = self._btn(edit, label, lambda s=semis: self.transpose(s), width=58)
+            b.pack(side="left", padx=2)
+            self._transpose_btns.append(b)
+        self.edit_hint = ctk.CTkLabel(edit, text="", font=self.cf_small, text_color=PURPLE)
+        self.edit_hint.pack(side="right", padx=4)
 
         # status (bottom) then the table fills the middle
         self.status = ctk.CTkLabel(self, text="› open a MIDI, or Import VSQx to re-lyric — "
@@ -262,11 +285,19 @@ class App(ctk.CTk):
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self._draw_banner()
         self._draw_piano_roll()
+        self._sync_edit_bar()
 
     def _bind_keys(self):
         self.bind("<Control-o>", lambda e: self.open_midi())
         self.bind("<Control-r>", lambda e: self.open_tuned_vsqx())
         self.bind("<Control-s>", lambda e: self.export_vsqx())
+        self.bind("<Control-z>", lambda e: self.undo())
+        self.bind("<Control-y>", lambda e: self.redo())
+        self.bind("<Control-Shift-Z>", lambda e: self.redo())
+        self.bind("<Shift-Up>", lambda e: self.transpose(1))
+        self.bind("<Shift-Down>", lambda e: self.transpose(-1))
+        self.bind("<Control-Up>", lambda e: self.transpose(12))
+        self.bind("<Control-Down>", lambda e: self.transpose(-12))
 
     # ---- piano-roll visualizer --------------------------------------------
     def _lead_flags(self, notes):
@@ -352,6 +383,51 @@ class App(ctk.CTk):
         if len(sr) == 4 and float(sr[2]) > 0:
             self.canvas.xview_moveto(max(0.0, ((t0 - self._roll_t0) * self._PPT - 40) / float(sr[2])))
 
+    # ---- undo / redo (structural note edits in MIDI mode) ------------------
+    def _snapshot(self):
+        """A copy of the current notes (Note fields are all immutable scalars)."""
+        return [copy.copy(n) for n in self.song.notes] if self.song else []
+
+    def _push_undo(self):
+        """Call BEFORE a structural change so it can be undone."""
+        if self.song is None:
+            return
+        self._undo.append(self._snapshot())
+        del self._undo[:-self._UNDO_MAX]
+        self._redo.clear()
+
+    def _restore(self, notes):
+        self.song.notes = notes
+        self.draw_notes = self.song.notes
+        self._populate()
+
+    def undo(self):
+        if not self._undo or self.song is None:
+            return
+        self._redo.append(self._snapshot())
+        self._restore(self._undo.pop())
+        self.status.configure(text="↶ undid an edit  ·  %d step(s) left" % len(self._undo))
+        self._sync_edit_bar()
+
+    def redo(self):
+        if not self._redo or self.song is None:
+            return
+        self._undo.append(self._snapshot())
+        self._restore(self._redo.pop())
+        self.status.configure(text="↷ redid an edit  ·  %d step(s) left" % len(self._redo))
+        self._sync_edit_bar()
+
+    def _sync_edit_bar(self):
+        """Enable/disable the edit-bar controls for the current mode + history."""
+        midi = self._editable()
+        self.undo_btn.configure(state=("normal" if self._undo else "disabled"))
+        self.redo_btn.configure(state=("normal" if self._redo else "disabled"))
+        for b in self._transpose_btns:
+            b.configure(state=("normal" if midi else "disabled"))
+        self.edit_hint.configure(
+            text=("double-click to add · drag to move · drag right edge to resize · Delete to remove"
+                  if midi else "re-lyric mode · tuning is locked"))
+
     # ---- note editing (MIDI mode only; re-lyric never alters tuning) -------
     def _editable(self):
         return self.export_mode == "midi" and bool(self.draw_notes)
@@ -363,23 +439,33 @@ class App(ctk.CTk):
                 return n, ("resize" if (x1 - cx) <= 6 and (x1 - x0) > 12 else "move")
         return None
 
+    def _select_note_row(self, n):
+        """Select the table row for a note clicked on the roll. Works in both modes —
+        clicking a tuning tail selects its syllable's row."""
+        di = next((i for i, (_it, nn, _l) in enumerate(self._note_items) if nn is n), None)
+        if di is None:
+            return
+        flags = self._lead_flags(self.draw_notes)
+        row = sum(1 for f in flags[:di + 1] if f) - 1
+        kids = self.tree.get_children()
+        if 0 <= row < len(kids):
+            self.tree.selection_set(kids[row])
+            self.tree.focus(kids[row])
+            self.tree.see(kids[row])
+
     def _roll_press(self, e):
         self._drag = None
-        if not self._editable():
-            return
         cx, cy = self.canvas.canvasx(e.x), self.canvas.canvasy(e.y)
         hit = self._hit_note(cx, cy)
         if not hit:
             return
         n, mode = hit
+        self._select_note_row(n)                 # click-to-select in any mode
+        if not self._editable():
+            return
         self._drag = {"note": n, "mode": mode, "cx": cx, "cy": cy,
-                      "start0": n.start, "key0": n.key, "dur0": n.dur}
-        if n in self.song.notes:
-            i, kids = self.song.notes.index(n), self.tree.get_children()
-            if i < len(kids):
-                self.tree.selection_set(kids[i])
-                self.tree.focus(kids[i])
-                self.tree.see(kids[i])
+                      "start0": n.start, "key0": n.key, "dur0": n.dur,
+                      "pre": self._snapshot()}
 
     def _roll_drag(self, e):
         d = self._drag
@@ -396,9 +482,60 @@ class App(ctk.CTk):
         self._draw_piano_roll()
 
     def _roll_release(self, _e):
-        if self._drag:
-            self._drag = None
-            self._populate()
+        d = self._drag
+        self._drag = None
+        if not d:
+            return
+        n = d["note"]
+        if (n.start, n.key, n.dur) != (d["start0"], d["key0"], d["dur0"]):
+            self._undo.append(d["pre"])          # one undo step per effective drag
+            del self._undo[:-self._UNDO_MAX]
+            self._redo.clear()
+        self._populate()
+        self._sync_edit_bar()
+
+    def _roll_add(self, e):
+        """Double-click empty roll space to add a note there (MIDI mode)."""
+        if not self._editable():
+            return
+        cx, cy = self.canvas.canvasx(e.x), self.canvas.canvasy(e.y)
+        if self._hit_note(cx, cy):               # double-clicked a note -> ignore
+            return
+        tick = self._roll_t0 + round((cx - self._pad) / self._PPT / self._GRID) * self._GRID
+        key = int(round(self._kmax - (cy - self._pad) / self._row_h))
+        tick, key = max(0, tick), max(0, min(127, key))
+        self._push_undo()
+        new = Note(start=tick, dur=self._DEFAULT_DUR, key=key, velocity=96, lyric="")
+        self.song.notes.append(new)
+        self.song.notes.sort(key=lambda nn: (nn.start, nn.key))
+        self.draw_notes = self.song.notes
+        self._populate()
+        i = self.song.notes.index(new)
+        kids = self.tree.get_children()
+        if i < len(kids):
+            self.tree.selection_set(kids[i])
+            self.tree.focus(kids[i])
+            self.tree.see(kids[i])
+        self.status.configure(text="Added %s. Drag to adjust, type a lyric, or Delete to remove."
+                              % midi_note_name(key))
+        self._sync_edit_bar()
+
+    def transpose(self, semitones):
+        """Shift every note by `semitones` (MIDI mode only; tuned files stay locked)."""
+        if not self._editable() or not self.song.notes:
+            return
+        lo = min(n.key for n in self.song.notes) + semitones
+        hi = max(n.key for n in self.song.notes) + semitones
+        if lo < 0 or hi > 127:
+            self.status.configure(text="Can't transpose — that would leave the MIDI range.")
+            return
+        self._push_undo()
+        for n in self.song.notes:
+            n.key += semitones
+        self.draw_notes = self.song.notes
+        self._populate()
+        self.status.configure(text="Transposed all notes %+d semitone(s)." % semitones)
+        self._sync_edit_bar()
 
     def _delete_note(self):
         if not self._editable():
@@ -408,10 +545,12 @@ class App(ctk.CTk):
             return
         i = self.tree.get_children().index(sel[0])
         if 0 <= i < len(self.song.notes):
+            self._push_undo()
             del self.song.notes[i]
             self.draw_notes = self.song.notes
             self._populate()
-            self.status.configure(text="› deleted a note — %d left." % len(self.song.notes))
+            self.status.configure(text="Deleted a note — %d left." % len(self.song.notes))
+            self._sync_edit_bar()
 
     # ---- playback (built-in synth, or loopMIDI -> FL) ----------------------
     def _refresh_ports(self):
@@ -600,10 +739,15 @@ class App(ctk.CTk):
             ("", "5. Back here: click ↻, set Out = 'ToFL', press ▶ Play. FL plays the notes "
                  "with your instrument. (The 'Sound' menu is ignored when routing to FL.)"),
             ("h", "6 · Edit notes (MIDI mode)"),
-            ("", "After Open MIDI, you can fix the melody right on the piano-roll: drag a note "
-                 "to move it (and change its pitch), drag its right edge to resize, or select "
-                 "a row and press Delete to remove it. (Editing is off in re-lyric mode so "
-                 "your Piapro tuning is never altered.)"),
+            ("", "After Open MIDI, you can fix the melody right on the piano-roll:"),
+            ("", "• Drag a note to move it (and change its pitch); drag its right edge to resize."),
+            ("", "• Double-click an empty spot to add a note; type a lyric for it like any other."),
+            ("", "• Select a row (or click a note) and press Delete to remove it."),
+            ("", "• Transpose all notes with the −8va / −1 / +1 / +8va buttons, or Shift+↑/↓ "
+                 "(semitone) and Ctrl+↑/↓ (octave)."),
+            ("", "• Undo / Redo (Ctrl+Z / Ctrl+Y) reverse any move, resize, add, delete or "
+                 "transpose. (Editing is off in re-lyric mode so your Piapro tuning is never "
+                 "altered — there, clicking a note just highlights its syllable.)"),
             ("h", "The piano-roll"),
             ("", "The strip up top shows your notes. ORANGE = a syllable's first note; "
                  "LAVENDER = a held/tuning note that continues it. Click a row to light up "
@@ -662,8 +806,11 @@ class App(ctk.CTk):
         self.clip = None
         self.baseline_path = None
         self.baseline_starts = None
+        self._undo.clear()
+        self._redo.clear()
         self.draw_notes = self.song.notes
         self._populate()
+        self._sync_edit_bar()
         self.info.configure(text="%s  —  %d notes, %s BPM, %d/%d" % (
             os.path.basename(path), len(self.song.notes), self.song.bpm,
             self.song.numerator, self.song.denominator))
@@ -703,7 +850,10 @@ class App(ctk.CTk):
         self.clip = clip
         self.baseline_path = None
         self.baseline_starts = None
+        self._undo.clear()
+        self._redo.clear()
         self._show_clip(clip, hdr, by_mora=True)
+        self._sync_edit_bar()
         tag = "" if len(clips) == 1 else "  [%s]" % clip.label
         self.info.configure(text="%s  —  %d syllables, %s BPM, %d/%d  (re-lyric)%s" % (
             os.path.basename(path), len(self.song.notes), hdr.bpm,
@@ -751,6 +901,7 @@ class App(ctk.CTk):
         self.baseline_path = path
         self.baseline_starts = sorted(n.start for n in match.notes)
         self._show_clip(match, hdr, by_mora=False, draw=self.clip.notes)
+        self._sync_edit_bar()
         self.info.configure(text="%s + un-tuned %s  —  %d syllables (exact splits)" % (
             os.path.basename(self.vsqx_path), os.path.basename(path), len(match.notes)))
         self.status.configure(text="Using the un-tuned file for exact splits. Type new lyrics; "
