@@ -80,6 +80,25 @@ def _vowel_tail(new_mora: str, vowel: str):
     return {"a": "あ", "i": "い", "u": "う", "e": "え", "o": "お"}[vowel]
 
 
+# Small kana / prolong marks that attach to the preceding base kana.
+_SMALL_KANA = set("ゃゅょゎぁぃぅぇぉャュョヮァィゥェォ") | {"ー", "－"}
+
+
+def split_kana_moras(text: str):
+    """Split a continuous kana string into moras — a base kana plus any following small
+    kana or 'ー' (きゃ stays one mora). Whitespace separates and is dropped; non-kana
+    characters each become their own token. Used for batch lyric entry."""
+    moras = []
+    for ch in text:
+        if ch.isspace():
+            continue
+        if moras and ch in _SMALL_KANA:
+            moras[-1] += ch
+        else:
+            moras.append(ch)
+    return moras
+
+
 # --- reading -----------------------------------------------------------------
 def _local(tag: str) -> str:
     """Tag name without its XML namespace ('{ns}note' -> 'note')."""
@@ -338,6 +357,15 @@ def plan_relyric(notes, new_lyrics, baseline_starts=None):
             if tail and tail != n.lyric.strip():
                 plan[i] = tail
     return plan
+
+
+def unmapped_moras(notes, baseline_starts) -> int:
+    """How many baseline moras receive NO tuned notes — a sign the un-tuned file doesn't
+    line up with the tuned one (e.g. their syllable counts differ). 0 == clean fit."""
+    if not baseline_starts:
+        return 0
+    hit = {_mora_index_by_baseline(n.start, baseline_starts) for n in notes}
+    return len(baseline_starts) - len(hit)
 
 
 def relyric_vsqx(in_path: str, new_lyrics: List[str], out_path: str,
