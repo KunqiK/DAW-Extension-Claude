@@ -50,6 +50,8 @@ BG_CARD = "#221d2e"    # rounded cards / panels
 BG_INPUT = "#2d2740"   # dropdowns / inputs
 NIGHT = "#241f30"      # top of the piano-roll gradient
 EMBER = "#3a2f2a"      # warm tint at the right of the header gradient
+MINT = "#7fd6a6"       # "all lyrics filled" success tint
+EMPTY_BG = "#2a2030"   # row tint for a note still missing a lyric
 
 # Selectable UI font families (display name -> family). Tk falls back if missing.
 FONT_THEMES = {
@@ -104,6 +106,7 @@ class App(ctk.CTk):
         self._play_thread = None    # background MIDI playback thread
         self._stop = threading.Event()
 
+        self._info_prefix = "No file loaded."   # file details; progress is appended live
         self.font_name = "Verdana · rounded"
         self.fonts = self._fonts_for(self.font_name)         # tuples for canvas + ttk
         fam = FONT_THEMES.get(self.font_name, "Segoe UI")
@@ -272,6 +275,7 @@ class App(ctk.CTk):
         for c in cols:
             self.tree.heading(c, text=heads[c])
             self.tree.column(c, width=widths[c], anchor=("w" if c == "lyric" else "center"))
+        self.tree.tag_configure("empty", background=EMPTY_BG, foreground=PLUM)
         vsb = ctk.CTkScrollbar(tablecard, command=self.tree.yview,
                                button_color=PURPLE, button_hover_color=LILAC)
         self.tree.configure(yscrollcommand=vsb.set)
@@ -809,11 +813,11 @@ class App(ctk.CTk):
         self._undo.clear()
         self._redo.clear()
         self.draw_notes = self.song.notes
+        self._info_prefix = "%s  —  %d notes, %s BPM, %d/%d" % (
+            os.path.basename(path), len(self.song.notes), self.song.bpm,
+            self.song.numerator, self.song.denominator)
         self._populate()
         self._sync_edit_bar()
-        self.info.configure(text="%s  —  %d notes, %s BPM, %d/%d" % (
-            os.path.basename(path), len(self.song.notes), self.song.bpm,
-            self.song.numerator, self.song.denominator))
         self.status.configure(text="› type a syllable per note (Enter = next). Drag notes on the "
                               "roll to move/re-pitch, drag a right edge to resize, Delete to remove.")
         if self.song.notes:
@@ -855,9 +859,10 @@ class App(ctk.CTk):
         self._show_clip(clip, hdr, by_mora=True)
         self._sync_edit_bar()
         tag = "" if len(clips) == 1 else "  [%s]" % clip.label
-        self.info.configure(text="%s  —  %d syllables, %s BPM, %d/%d  (re-lyric)%s" % (
+        self._info_prefix = "%s  —  %d syllables, %s BPM, %d/%d  (re-lyric)%s" % (
             os.path.basename(path), len(self.song.notes), hdr.bpm,
-            hdr.numerator, hdr.denominator, tag))
+            hdr.numerator, hdr.denominator, tag)
+        self._refresh_info()
         self.status.configure(
             text="Type the NEW lyric for each syllable (Enter = save & next). Export keeps "
                  "your tuning. If a syllable was split oddly, add the un-tuned file.")
@@ -902,8 +907,9 @@ class App(ctk.CTk):
         self.baseline_starts = sorted(n.start for n in match.notes)
         self._show_clip(match, hdr, by_mora=False, draw=self.clip.notes)
         self._sync_edit_bar()
-        self.info.configure(text="%s + un-tuned %s  —  %d syllables (exact splits)" % (
-            os.path.basename(self.vsqx_path), os.path.basename(path), len(match.notes)))
+        self._info_prefix = "%s + un-tuned %s  —  %d syllables (exact splits)" % (
+            os.path.basename(self.vsqx_path), os.path.basename(path), len(match.notes))
+        self._refresh_info()
         self.status.configure(text="Using the un-tuned file for exact splits. Type new lyrics; "
                               "export keeps all tuning.")
 
@@ -981,6 +987,17 @@ class App(ctk.CTk):
                             "language so the new words sing right." % (path, self.clip.label))
 
     # ---- Table + inline lyric editing -------------------------------------
+    def _refresh_info(self):
+        """Show file details + a live 'X / N lyrics' counter (MIDI mode only). The
+        counter turns mint-green once every note has a lyric."""
+        total = len(self.song.notes) if self.song else 0
+        text, color = self._info_prefix, ORANGE
+        if self.export_mode == "midi" and total:
+            filled = sum(1 for n in self.song.notes if n.lyric.strip())
+            text = "%s  ·  %d/%d lyrics" % (self._info_prefix, filled, total)
+            color = MINT if filled == total else ORANGE
+        self.info.configure(text=text, text_color=color)
+
     def _populate(self):
         self._destroy_editor()
         self.tree.delete(*self.tree.get_children())
@@ -989,9 +1006,11 @@ class App(ctk.CTk):
         for i, n in enumerate(self.song.notes):
             bar = n.start // tpm + 1
             beat = (n.start % tpm) // beat_ticks + 1
-            self.tree.insert("", "end", values=(i + 1, "%d.%d" % (bar, beat),
-                                                 midi_note_name(n.key), n.dur, n.lyric))
+            tags = () if n.lyric.strip() else ("empty",)
+            self.tree.insert("", "end", tags=tags, values=(i + 1, "%d.%d" % (bar, beat),
+                                                            midi_note_name(n.key), n.dur, n.lyric))
         self._draw_piano_roll()
+        self._refresh_info()
 
     def _edit_selected(self):
         sel = self.tree.selection()
@@ -1021,9 +1040,11 @@ class App(ctk.CTk):
     def _commit(self, iid, entry, move=0):
         value = entry.get()
         self.tree.set(iid, "lyric", value)
+        self.tree.item(iid, tags=(() if value.strip() else ("empty",)))
         idx = int(self.tree.set(iid, "idx")) - 1
         if self.song and 0 <= idx < len(self.song.notes):
             self.song.notes[idx].lyric = value
+        self._refresh_info()
         self._destroy_editor()
         if move:
             kids = self.tree.get_children()
