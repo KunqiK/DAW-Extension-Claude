@@ -11,6 +11,7 @@ cd /d "%~dp0"
 
 py -m PyInstaller --noconfirm --onefile --windowed ^
   --name "MadeByMY-LyricTool" ^
+  --collect-all customtkinter ^
   --hidden-import mido.backends.rtmidi ^
   --hidden-import rtmidi ^
   app.py
