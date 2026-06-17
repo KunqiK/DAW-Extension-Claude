@@ -44,18 +44,24 @@ ORANGE = "#f29a30"     # primary accent: buttons, lead notes, selection
 PAPER = "#e1d8ef"      # text
 GLOW = "#ffce8a"       # lighter orange for hover/emphasis (derived)
 
-# Fonts — bigger than before, with a geometric face for that "tech" finish.
-# (Bahnschrift ships with Windows 10/11; Tk silently falls back if it's missing.)
-FONT = ("Segoe UI", 10)
-FONT_B = ("Segoe UI Semibold", 10)
-FONT_TITLE = ("Bahnschrift SemiBold", 18)
-FONT_MONO = ("Consolas", 10)
+# Selectable UI font families (display name -> family). Tk falls back if a font is
+# missing. The Sound/font picker in the header switches between these live.
+FONT_THEMES = {
+    "Segoe UI · clean": "Segoe UI",
+    "Bahnschrift · tech": "Bahnschrift",
+    "Consolas · mono": "Consolas",
+    "Verdana · rounded": "Verdana",
+    "Yu Gothic · modern": "Yu Gothic UI",
+}
+FONT = ("Segoe UI", 11)        # safe fallback / default body
+FONT_B = ("Segoe UI", 11, "bold")
+FONT_MONO = ("Consolas", 10)   # piano-roll + status accents
 
 
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("INA · Lyric Tool")
+        self.title("Made by M. Y.")
         self.geometry("1000x680")
         self.minsize(760, 460)
 
@@ -69,17 +75,36 @@ class App(tk.Tk):
         self.draw_notes = []        # raw notes drawn in the piano-roll
         self._note_items = []       # (canvas_id, note, is_lead) for highlight
         self._roll_t0 = 0           # tick at the left edge of the piano-roll
+        self._pad = 16              # piano-roll inner padding
+        self._row_h = 8.0           # piano-roll pixels per semitone (set when drawn)
+        self._kmax = 84             # top pitch on the roll (set when drawn)
+        self._drag = None           # active note drag {note, mode, ...}
         self._editor = None     # (Entry, row_iid) while editing a lyric cell
         self._play_thread = None    # background MIDI playback thread
         self._stop = threading.Event()
+        self.font_name = "Segoe UI · clean"     # current UI font (see FONT_THEMES)
+        self.fonts = self._fonts_for(self.font_name)
 
         self._apply_theme()
         self._build_ui()
         self._bind_keys()
 
     # ---- theme -------------------------------------------------------------
+    @staticmethod
+    def _fonts_for(name):
+        """Build the font set for a chosen family (see FONT_THEMES)."""
+        fam = FONT_THEMES.get(name, "Segoe UI")
+        return {
+            "body": (fam, 11),
+            "bold": (fam, 11, "bold"),
+            "title": (fam, 18, "bold"),
+            "sub": ("Consolas", 10),
+            "small": (fam, 9),
+        }
+
     def _apply_theme(self):
-        """Dark-plum / orange 'Ina' theme via the ttk 'clam' base."""
+        """Dark-plum / orange 'Ina' theme via the ttk 'clam' base, current fonts."""
+        f = self.fonts
         self.configure(bg=PLUM)
         style = ttk.Style(self)
         try:
@@ -87,63 +112,74 @@ class App(tk.Tk):
         except tk.TclError:
             pass
         style.configure(".", background=PLUM, foreground=PAPER, fieldbackground=ABYSS,
-                        bordercolor=PURPLE, font=FONT)
+                        bordercolor=PURPLE, font=f["body"])
         style.configure("TFrame", background=PLUM)
         style.configure("Head.TFrame", background=INK)
         style.configure("Rule.TFrame", background=ORANGE)          # thin accent rule
-        style.configure("TLabel", background=PLUM, foreground=PAPER, font=FONT)
-        style.configure("Title.TLabel", background=INK, foreground=ORANGE, font=FONT_TITLE)
-        style.configure("Sub.TLabel", background=INK, foreground=LILAC, font=FONT_MONO)
-        style.configure("Info.TLabel", background=PLUM, foreground=ORANGE, font=FONT_B)
-        style.configure("Status.TLabel", background=INK, foreground=LILAC, font=FONT_MONO)
+        style.configure("TLabel", background=PLUM, foreground=PAPER, font=f["body"])
+        style.configure("Title.TLabel", background=INK, foreground=ORANGE, font=f["title"])
+        style.configure("Sub.TLabel", background=INK, foreground=LILAC, font=f["sub"])
+        style.configure("Info.TLabel", background=PLUM, foreground=ORANGE, font=f["bold"])
+        style.configure("Status.TLabel", background=INK, foreground=LILAC, font=f["sub"])
         style.configure("TButton", background=ORANGE, foreground=INK, borderwidth=0,
-                        focuscolor=PLUM, padding=(12, 6), font=FONT_B)
+                        focuscolor=PLUM, padding=(12, 6), font=f["bold"])
         style.map("TButton", background=[("active", GLOW), ("pressed", PURPLE)],
                   foreground=[("active", INK), ("pressed", PAPER)])
         style.configure("Ghost.TButton", background=PURPLE, foreground=PAPER)
         style.map("Ghost.TButton", background=[("active", LILAC), ("pressed", PLUM)],
                   foreground=[("active", INK)])
         style.configure("Treeview", background=ABYSS, fieldbackground=ABYSS,
-                        foreground=PAPER, rowheight=28, borderwidth=0, font=FONT)
+                        foreground=PAPER, rowheight=28, borderwidth=0, font=f["body"])
         style.configure("Treeview.Heading", background=PURPLE, foreground=PAPER,
-                        relief="flat", font=FONT_B)
+                        relief="flat", font=f["bold"])
         style.map("Treeview.Heading", background=[("active", PLUM)])
         style.map("Treeview", background=[("selected", ORANGE)],
                   foreground=[("selected", INK)])
         style.configure("TScrollbar", background=PLUM, troughcolor=ABYSS,
                         bordercolor=PLUM, arrowcolor=PAPER)
         style.configure("TCombobox", fieldbackground=ABYSS, background=PURPLE,
-                        foreground=PAPER, arrowcolor=ORANGE, bordercolor=PURPLE,
-                        padding=4)
+                        foreground=PAPER, arrowcolor=ORANGE, bordercolor=PURPLE, padding=4)
         style.map("TCombobox", fieldbackground=[("readonly", ABYSS)],
                   foreground=[("readonly", PAPER)], selectbackground=[("readonly", ABYSS)])
-        style.configure("TCheckbutton", background=PLUM, foreground=PAPER, font=FONT)
+        style.configure("TCheckbutton", background=PLUM, foreground=PAPER, font=f["body"])
         style.map("TCheckbutton", background=[("active", PLUM)],
                   foreground=[("active", GLOW)], indicatorcolor=[("selected", ORANGE)])
+
+    def _set_font_theme(self, name):
+        """Switch the UI font family live and redraw."""
+        self.font_name = name
+        self.fonts = self._fonts_for(name)
+        self._apply_theme()
+        self._draw_piano_roll()
 
     # ---- UI construction ---------------------------------------------------
     def _build_ui(self):
         # header
         head = ttk.Frame(self, style="Head.TFrame", padding=(14, 10))
         head.pack(side="top", fill="x")
-        ttk.Label(head, text="INA  ·  LYRIC TOOL", style="Title.TLabel").pack(side="left")
+        ttk.Label(head, text="MADE BY M. Y.", style="Title.TLabel").pack(side="left")
         ttk.Label(head, text="   midi → vsqx · re-lyric · keep your tuning",
                   style="Sub.TLabel").pack(side="left", padx=(12, 0))
         ttk.Button(head, text="?  Help", style="Ghost.TButton",
                    command=self._show_help).pack(side="right")
+        self.font_cb = ttk.Combobox(head, width=17, state="readonly",
+                                     values=list(FONT_THEMES))
+        self.font_cb.set(self.font_name)
+        self.font_cb.pack(side="right", padx=(0, 10))
+        self.font_cb.bind("<<ComboboxSelected>>",
+                          lambda e: self._set_font_theme(self.font_cb.get()))
+        ttk.Label(head, text="Font", style="Sub.TLabel").pack(side="right", padx=(0, 6))
         ttk.Frame(self, style="Rule.TFrame", height=2).pack(side="top", fill="x")
 
         # file actions
         toolbar = ttk.Frame(self, padding=(8, 8, 8, 2))
         toolbar.pack(side="top", fill="x")
-        for text, cmd in (("Open MIDI… (Ctrl+O)", self.open_midi),
-                          ("Re-lyric tuned VSQX… (Ctrl+R)", self.open_tuned_vsqx),
-                          ("+ un-tuned (exact splits)…", self.open_baseline),
-                          ("Batch lyrics…", self.batch_lyrics),
-                          ("Export VSQX… (Ctrl+S)", self.export_vsqx)):
+        for text, cmd in (("Open MIDI (Ctrl+O)", self.open_midi),
+                          ("Import VSQx (Ctrl+R)", self.open_tuned_vsqx),
+                          ("Import Untuned Reference VSQx", self.open_baseline),
+                          ("Batch lyrics", self.batch_lyrics),
+                          ("Export VSQX (Ctrl+S)", self.export_vsqx)):
             ttk.Button(toolbar, text=text, command=cmd).pack(side="left", padx=(0, 6))
-        self.info = ttk.Label(toolbar, text="No file loaded.", style="Info.TLabel")
-        self.info.pack(side="left", padx=10)
 
         # playback bar
         play = ttk.Frame(self, padding=(8, 2, 8, 6))
@@ -160,6 +196,8 @@ class App(tk.Tk):
         self.sound_cb.pack(side="left", padx=(4, 12))
         ttk.Button(play, text="↻", width=3, style="Ghost.TButton",
                    command=self._refresh_ports).pack(side="left")
+        self.info = ttk.Label(play, text="No file loaded.", style="Info.TLabel")
+        self.info.pack(side="right", padx=10)
         self._refresh_ports()
 
         # piano-roll visualizer (notes over time × pitch)
@@ -172,6 +210,9 @@ class App(tk.Tk):
         self.canvas.pack(side="top", fill="x")
         hsb.pack(side="top", fill="x")
         self.canvas.bind("<Configure>", lambda e: self._draw_piano_roll())
+        self.canvas.bind("<Button-1>", self._roll_press)
+        self.canvas.bind("<B1-Motion>", self._roll_drag)
+        self.canvas.bind("<ButtonRelease-1>", self._roll_release)
 
         # lyric table
         table = ttk.Frame(self, padding=(8, 8, 8, 0))
@@ -189,11 +230,12 @@ class App(tk.Tk):
         vsb.pack(side="right", fill="y")
         self.tree.bind("<Double-1>", lambda e: self._edit_selected())
         self.tree.bind("<Return>", lambda e: self._edit_selected())
+        self.tree.bind("<Delete>", lambda e: self._delete_note())
         self.tree.bind("<<TreeviewSelect>>", lambda e: self._highlight_selection())
 
         self.status = ttk.Label(
             self, relief="flat", anchor="w", padding=8, style="Status.TLabel",
-            text="› open a MIDI, or re-lyric a tuned VSQX — press “?  Help” for a guide")
+            text="› open a MIDI, or Import VSQx to re-lyric — press “?  Help” for a guide")
         self.status.pack(side="bottom", fill="x")
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self._draw_piano_roll()      # empty-state placeholder + legend
@@ -205,6 +247,7 @@ class App(tk.Tk):
 
     # ---- piano-roll visualizer --------------------------------------------
     _PPT = 0.06       # pixels per tick (~115 px per 4/4 bar)
+    _GRID = 120       # note-edit time snap (1/16 note, in ticks)
 
     def _lead_flags(self, notes):
         """Per-note bool: True if the note starts a new sung syllable."""
@@ -221,17 +264,17 @@ class App(tk.Tk):
         notes = self.draw_notes
         if not notes:
             c.configure(scrollregion=(0, 0, 0, 0))
-            c.create_text(14, 14, anchor="nw", fill=PURPLE, font=("Segoe UI", 10),
-                          text="♪  piano-roll — open a MIDI or a tuned VSQX")
+            c.create_text(14, 14, anchor="nw", fill=PURPLE, font=self.fonts["body"],
+                          text="♪  piano-roll — open a MIDI or import a tuned VSQx")
             return
-        H, pad = int(c.cget("height")), 16
+        H, pad = int(c.cget("height")), self._pad
         keys = [n.key for n in notes]
         kmin, kmax = min(keys), max(keys)
-        row_h = max(3.0, min(12.0, (H - 2 * pad) / (kmax - kmin + 1)))
+        row_h = max(3.0, min(14.0, (H - 2 * pad) / (kmax - kmin + 1)))
         t0 = min(n.start for n in notes)              # left edge = first note's bar
         tpm = ticks_per_measure(self.song.numerator, self.song.denominator) if self.song else 1920
         t0 = (t0 // tpm) * tpm if tpm else t0
-        self._roll_t0 = t0
+        self._roll_t0, self._row_h, self._kmax = t0, row_h, kmax
         end = max(n.start + n.dur for n in notes)
         width = int((end - t0) * self._PPT) + 2 * pad
         c.configure(scrollregion=(0, 0, max(width, c.winfo_width()), H))
@@ -255,14 +298,14 @@ class App(tk.Tk):
             self._note_items.append((item, n, lead))
             if lead and n.lyric:
                 c.create_text(x0 + 1, y0 - 1, anchor="sw", fill=PAPER,
-                              font=("Segoe UI", 8), text=n.lyric)
+                              font=self.fonts["small"], text=n.lyric)
 
         # legend (sits at the start of the roll)
         lx = pad
         for color, label in ((ORANGE, "syllable"), (LILAC, "held note")):
             c.create_rectangle(lx, 2, lx + 11, 11, fill=color, outline=INK)
             t = c.create_text(lx + 15, 1, anchor="nw", fill=PAPER,
-                              font=("Segoe UI", 8), text=label)
+                              font=self.fonts["small"], text=label)
             lx = c.bbox(t)[2] + 12
 
     def _highlight_selection(self):
@@ -282,6 +325,68 @@ class App(tk.Tk):
         if len(sr) == 4 and float(sr[2]) > 0:
             self.canvas.xview_moveto(
                 max(0.0, ((t0 - self._roll_t0) * self._PPT - 40) / float(sr[2])))
+
+    # ---- note editing (MIDI mode only; re-lyric never alters tuning) -------
+    def _editable(self):
+        return self.export_mode == "midi" and bool(self.draw_notes)
+
+    def _hit_note(self, cx, cy):
+        """Topmost note rectangle under (cx, cy) → (note, 'move'|'resize'), else None."""
+        for item, n, _lead in reversed(self._note_items):
+            x0, y0, x1, y1 = self.canvas.coords(item)
+            if x0 - 2 <= cx <= x1 + 2 and y0 - 2 <= cy <= y1 + 2:
+                return n, ("resize" if (x1 - cx) <= 6 and (x1 - x0) > 12 else "move")
+        return None
+
+    def _roll_press(self, e):
+        self._drag = None
+        if not self._editable():
+            return
+        cx, cy = self.canvas.canvasx(e.x), self.canvas.canvasy(e.y)
+        hit = self._hit_note(cx, cy)
+        if not hit:
+            return
+        n, mode = hit
+        self._drag = {"note": n, "mode": mode, "cx": cx, "cy": cy,
+                      "start0": n.start, "key0": n.key, "dur0": n.dur}
+        if n in self.song.notes:                       # select the matching table row
+            i, kids = self.song.notes.index(n), self.tree.get_children()
+            if i < len(kids):
+                self.tree.selection_set(kids[i])
+                self.tree.focus(kids[i])
+                self.tree.see(kids[i])
+
+    def _roll_drag(self, e):
+        d = self._drag
+        if not d:
+            return
+        cx, cy = self.canvas.canvasx(e.x), self.canvas.canvasy(e.y)
+        dtick = round((cx - d["cx"]) / self._PPT / self._GRID) * self._GRID
+        n = d["note"]
+        if d["mode"] == "resize":
+            n.dur = max(self._GRID, d["dur0"] + dtick)
+        else:
+            n.start = max(0, d["start0"] + dtick)
+            n.key = max(0, min(127, d["key0"] - int(round((cy - d["cy"]) / self._row_h))))
+        self._draw_piano_roll()
+
+    def _roll_release(self, _e):
+        if self._drag:
+            self._drag = None
+            self._populate()                            # resync table + redraw
+
+    def _delete_note(self):
+        if not self._editable():
+            return
+        sel = self.tree.selection()
+        if not sel:
+            return
+        i = self.tree.get_children().index(sel[0])
+        if 0 <= i < len(self.song.notes):
+            del self.song.notes[i]
+            self.draw_notes = self.song.notes
+            self._populate()
+            self.status.config(text="› deleted a note — %d left." % len(self.song.notes))
 
     # ---- playback (built-in synth, or loopMIDI -> FL) ----------------------
     def _refresh_ports(self):
@@ -372,8 +477,8 @@ class App(tk.Tk):
                   text="Paste %d syllables — one per note, separated by spaces or new "
                        "lines." % n).pack(anchor="w")
         txt = tk.Text(dlg, width=46, height=12, bg=ABYSS, fg=PAPER, insertbackground=ORANGE,
-                      relief="flat", wrap="word", font=FONT, highlightthickness=1,
-                      highlightbackground=PURPLE)
+                      relief="flat", wrap="word", font=self.fonts["body"], spacing1=2,
+                      highlightthickness=1, highlightbackground=PURPLE)
         txt.pack(fill="both", expand=True, padx=10)
         kana = tk.BooleanVar(value=False)
         ttk.Checkbutton(dlg, variable=kana, style="TCheckbutton",
@@ -411,19 +516,26 @@ class App(tk.Tk):
     # ---- help --------------------------------------------------------------
     def _show_help(self):
         dlg = tk.Toplevel(self)
-        dlg.title("INA · Lyric Tool — Help")
+        dlg.title("Made by M. Y. — Help")
         dlg.configure(bg=PLUM)
         dlg.transient(self)
-        txt = tk.Text(dlg, width=84, height=30, bg=ABYSS, fg=PAPER, relief="flat",
-                      wrap="word", font=FONT, padx=14, pady=12, highlightthickness=0)
+        fam = self.fonts["body"][0]
+        txt = tk.Text(dlg, width=80, height=28, bg=ABYSS, fg=PAPER, relief="flat",
+                      wrap="word", font=self.fonts["body"], padx=22, pady=16,
+                      highlightthickness=0, spacing2=4)        # spacing2 = within-paragraph
         txt.pack(side="left", fill="both", expand=True)
         sb = ttk.Scrollbar(dlg, orient="vertical", command=txt.yview)
         txt.configure(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
-        txt.tag_configure("h", foreground=ORANGE, font=("Bahnschrift SemiBold", 13))
-        txt.tag_configure("b", foreground=GLOW, font=FONT_B)
+        # generous spacing so nothing feels crammed
+        txt.tag_configure("h", foreground=ORANGE, font=(fam, 14, "bold"),
+                          spacing1=20, spacing3=8)             # section headings
+        txt.tag_configure("b", foreground=GLOW, font=self.fonts["bold"],
+                          spacing1=10, spacing3=4)             # sub-headings
+        txt.tag_configure("p", foreground=PAPER, spacing3=14,  # body paragraphs
+                          lmargin1=12, lmargin2=12, rmargin=14)
         for kind, line in self._help_lines():
-            txt.insert("end", line + "\n", kind)
+            txt.insert("end", line + "\n", kind or "p")
         txt.configure(state="disabled")
         dlg.bind("<Escape>", lambda e: dlg.destroy())
         dlg.update_idletasks()
@@ -436,16 +548,16 @@ class App(tk.Tk):
             ("", "Put lyrics on a melody for Piapro Studio (VOCALOID) — either build a fresh "
                  ".vsqx from a MIDI, or re-word a tuned .vsqx while keeping all your tuning."),
             ("h", "1 · MIDI → VSQX  (write new lyrics)"),
-            ("b", "Open MIDI…  →  type one syllable per note  →  Export VSQX…"),
+            ("b", "Open MIDI  →  type one syllable per note  →  Export VSQX"),
             ("", "Export a melody from FL Studio as MIDI, open it, fill the Lyric column "
                  "(Enter = next note), then export. In Piapro: File ▸ Import ▸ VSQX."),
-            ("h", "2 · Re-lyric a tuned VSQX  (keep the tuning)"),
-            ("b", "Re-lyric tuned VSQX…  →  (pick a vocal line)  →  type new words  →  Export"),
+            ("h", "2 · Import a tuned VSQx  (re-lyric, keep the tuning)"),
+            ("b", "Import VSQx  →  (pick a vocal line)  →  type new words  →  Export"),
             ("", "Open a .vsqx you already tuned in Piapro. Each row is one sung syllable "
                  "(the little tuning notes are grouped for you). Type the new word over each "
                  "syllable and export — every pitch and note-split you tuned is preserved. "
                  "After importing in Piapro, run Job ▸ Convert phonemes to match language."),
-            ("b", "+ un-tuned (exact splits)…"),
+            ("b", "Import Untuned Reference VSQx"),
             ("", "Optional. If a syllable was split in a way the tool can't read for sure "
                  "(e.g. a held vowel next to a real vowel syllable), also load the UN-tuned "
                  "version of the same line. It pins the exact syllable boundaries by timing. "
@@ -459,10 +571,25 @@ class App(tk.Tk):
                  "instead of typing one by one. Tick 'Auto-split kana' to break a continuous "
                  "kana string like きらきら into き ら き ら."),
             ("h", "5 · Play it back"),
-            ("", "Press ▶ Play to hear the melody. 'Out' picks where the sound goes: "
-                 "'Microsoft GS Wavetable Synth' plays through Windows (pick a 'Sound'), or a "
-                 "'loopMIDI Port' sends the notes to FL Studio so you hear your FL instrument "
-                 "(install loopMIDI, add the port as a MIDI input in FL, arm a channel)."),
+            ("", "Press ▶ Play to hear the loaded notes; ■ Stop halts. 'Out' chooses where "
+                 "the sound goes; 'Sound' picks an instrument for the built-in synth."),
+            ("b", "A) Quick — Windows built-in synth (no setup)"),
+            ("", "Set Out = 'Microsoft GS Wavetable Synth', pick a Sound, press Play."),
+            ("b", "B) Hear it with your FL Studio instrument (via loopMIDI)"),
+            ("", "1. Download & install loopMIDI (free, by Tobias Erichsen)."),
+            ("", "2. Open loopMIDI, type a name (e.g. 'ToFL') and click + to create the port. "
+                 "Leave loopMIDI running."),
+            ("", "3. In FL Studio: Options ▸ MIDI Settings. Under Input, select 'ToFL', click "
+                 "Enable, and give it a Controller type = (generic) and a Port number, e.g. 0."),
+            ("", "4. In FL, add your instrument to a channel; set that channel to receive on "
+                 "the same MIDI port (channel's MIDI input port = 0), and enable it."),
+            ("", "5. Back here: click ↻, set Out = 'ToFL', press ▶ Play. FL plays the notes "
+                 "with your instrument. (The 'Sound' menu is ignored when routing to FL.)"),
+            ("h", "6 · Edit notes (MIDI mode)"),
+            ("", "After Open MIDI, you can fix the melody right on the piano-roll: drag a note "
+                 "to move it (and change its pitch), drag its right edge to resize, or select "
+                 "a row and press Delete to remove it. (Editing is off in re-lyric mode so "
+                 "your Piapro tuning is never altered.)"),
             ("h", "The piano-roll"),
             ("", "The strip up top shows your notes. ORANGE = a syllable's first note; "
                  "LAVENDER = a held/tuning note that continues it. Click a row to light up "
@@ -492,7 +619,8 @@ class App(tk.Tk):
         self.info.config(text="%s  —  %d notes, %s BPM, %d/%d" % (
             os.path.basename(path), len(self.song.notes), self.song.bpm,
             self.song.numerator, self.song.denominator))
-        self.status.config(text="Type a syllable per note. Enter = save & next note. Then Export VSQX.")
+        self.status.config(text="› type a syllable per note (Enter = next). Drag notes on the "
+                                "roll to move/re-pitch, drag a right edge to resize, Delete to remove.")
         if self.song.notes:
             first = self.tree.get_children()[0]
             self.tree.selection_set(first)
@@ -617,7 +745,7 @@ class App(tk.Tk):
         box = tk.Listbox(dlg, width=66, height=min(12, len(clips)), activestyle="dotbox",
                          bg=ABYSS, fg=PAPER, selectbackground=ORANGE, selectforeground=INK,
                          highlightthickness=1, highlightbackground=PURPLE, borderwidth=0,
-                         font=("Segoe UI", 9))
+                         font=self.fonts["body"])
         for c in clips:
             box.insert("end", "  %s   —   %d notes, %d syllables"
                        % (c.label, len(c.notes), len(moras_of(c.notes))))
@@ -734,7 +862,7 @@ class App(tk.Tk):
         x, y, w, h = bbox
         entry = tk.Entry(self.tree, bg=ABYSS, fg=PAPER, insertbackground=ORANGE,
                          relief="flat", highlightthickness=1, highlightbackground=ORANGE,
-                         font=("Segoe UI", 10))
+                         font=self.fonts["body"])
         entry.insert(0, self.tree.set(iid, "lyric"))
         entry.select_range(0, "end")
         entry.focus_set()
