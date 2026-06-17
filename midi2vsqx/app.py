@@ -364,20 +364,16 @@ class App(ctk.CTk):
         bar.pack(side="top", fill="x", padx=12, pady=(12, 6))
         left = ctk.CTkFrame(bar, fg_color="transparent")
         left.pack(side="left", padx=8, pady=8)
-        for text, cmd in (("Open MIDI (Ctrl+O)", self.open_midi),
-                          ("Import VSQx (Ctrl+R)", self.open_tuned_vsqx),
+        for text, cmd in (("Open MIDI", self.open_midi),
+                          ("Import VSQx", self.open_tuned_vsqx),
                           ("Import Untuned Reference VSQx", self.open_baseline),
                           ("Batch lyrics", self.batch_lyrics)):
             self._btn(left, text, cmd).pack(side="left", padx=4)
-        self._btn(left, "Export VSQX (Ctrl+S)", self.export_vsqx, kind="primary").pack(side="left", padx=4)
+        self._btn(left, "Export VSQX", self.export_vsqx, kind="primary").pack(side="left", padx=4)
         right = ctk.CTkFrame(bar, fg_color="transparent")
         right.pack(side="right", padx=8, pady=8)
         self._btn(right, "?  Help", self._show_help, kind="ghost", width=72).pack(side="right", padx=4)
         self._btn(right, "▤ Lyrics", self._toggle_editor, kind="ghost", width=92).pack(side="right", padx=4)
-        self.font_cb = self._menu(right, list(FONT_THEMES), 160, command=self._set_font_theme)
-        self.font_cb.set(self.font_name)
-        self.font_cb.pack(side="right", padx=4)
-        ctk.CTkLabel(right, text="Font", font=self.cf_body, text_color=LILAC).pack(side="right", padx=(4, 2))
 
         # playback card
         play = ctk.CTkFrame(self, fg_color=BG_CARD, corner_radius=14)
@@ -1214,6 +1210,16 @@ class App(ctk.CTk):
                  "(vertical). Plain mouse-wheel scrolls up/down, Shift+wheel scrolls "
                  "sideways. A vertical scrollbar appears when the notes are taller than "
                  "the view, and the whole roll grows when you enlarge the window."),
+            ("h", "Keyboard shortcuts"),
+            ("", "• Ctrl+O — Open MIDI       • Ctrl+R — Import a tuned VSQx (re-lyric)"),
+            ("", "• Ctrl+S — Export VSQX     • Ctrl+Z / Ctrl+Y — Undo / Redo"),
+            ("", "• Shift+↑ / Shift+↓ — transpose all ±1 semitone"),
+            ("", "• Ctrl+↑ / Ctrl+↓ — transpose all ±1 octave"),
+            ("", "• Ctrl+wheel — zoom time   • Alt+wheel — zoom pitch"),
+            ("", "• wheel — scroll up/down   • Shift+wheel — scroll sideways"),
+            ("", "• Enter / Double-click a row — edit its lyric (Enter then jumps to the next)"),
+            ("", "• Delete — remove the selected note (Open MIDI mode)"),
+            ("", "(Shortcuts work from either window.)"),
         ]
 
     def _choose_clip(self, clips, preselect=0,

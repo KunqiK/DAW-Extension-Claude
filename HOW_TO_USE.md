@@ -33,7 +33,7 @@ Put lyrics on a melody for **Piapro Studio** (VOCALOID). Two jobs:
 | **Export VSQX** | Save the result. In Piapro: **File ▸ Import ▸ VSQX**, then **Job ▸ Convert phonemes to match language**. |
 | **▶ Play / Out / Sound** | Hear it — through Windows, or routed to **FL Studio** (see Playback). |
 | **▤ Lyrics** | Show/hide the lyric-list window (see below). |
-| **Font** | Change the look. **? Help** opens the full in-app guide. |
+| **? Help** | Opens the full in-app guide, including a **keyboard-shortcuts** list. |
 
 ### Two windows
 The app opens as **two side-by-side windows**: the **visualizer** (piano-roll + all the controls) on the left, and the **lyric list** in a tall window **docked to its right edge**. Move or resize the visualizer and the lyric window follows it (matching its height). Drag the lyric window's side to make it wider/narrower. Closed it by accident? Click **▤ Lyrics** to bring it back. Type in either window — your shortcuts work from both.
