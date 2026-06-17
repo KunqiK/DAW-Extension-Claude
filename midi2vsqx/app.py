@@ -9,6 +9,7 @@ Run:  python app.py      (needs Python 3.9+ and `pip install -r requirements.txt
 from __future__ import annotations
 
 import copy
+import json
 import os
 import threading
 import tkinter as tk
@@ -81,8 +82,9 @@ class App(ctk.CTk):
 
     def __init__(self):
         super().__init__()
+        self._settings = self._load_settings()      # remembered prefs (font/port/etc.)
         self.title("Made by M. Y.")
-        self.geometry("1180x720")
+        self.geometry(self._settings.get("geometry") or "1180x720")
         self.minsize(900, 540)
         self.configure(fg_color=BG_WIN)
 
@@ -107,7 +109,9 @@ class App(ctk.CTk):
         self._stop = threading.Event()
 
         self._info_prefix = "No file loaded."   # file details; progress is appended live
-        self.font_name = "Verdana · rounded"
+        self.font_name = self._settings.get("font", "Verdana · rounded")
+        if self.font_name not in FONT_THEMES:
+            self.font_name = "Verdana · rounded"
         self.fonts = self._fonts_for(self.font_name)         # tuples for canvas + ttk
         fam = FONT_THEMES.get(self.font_name, "Segoe UI")
         self.cf_body = ctk.CTkFont(family=fam, size=13)
@@ -118,6 +122,57 @@ class App(ctk.CTk):
 
         self._build_ui()
         self._bind_keys()
+        self._apply_saved_selections()
+
+    # ---- settings (remembered between runs) --------------------------------
+    @staticmethod
+    def _settings_path():
+        env = os.environ.get("MADEBYMY_SETTINGS")        # tests point this elsewhere
+        if env:
+            return env
+        base = os.environ.get("APPDATA") or os.path.expanduser("~")
+        return os.path.join(base, "MadeByMY-LyricTool", "settings.json")
+
+    def _load_settings(self) -> dict:
+        try:
+            with open(self._settings_path(), encoding="utf-8") as fh:
+                data = json.load(fh)
+            return data if isinstance(data, dict) else {}
+        except Exception:  # noqa: BLE001 - missing/corrupt config -> defaults
+            return {}
+
+    def _apply_saved_selections(self):
+        """Restore the last instrument + MIDI port once the menus exist."""
+        inst = self._settings.get("instrument")
+        if inst in dict(GM_INSTRUMENTS):
+            self.sound_cb.set(inst)
+        port = self._settings.get("port")
+        if port and not port.startswith("(") and port in getattr(self, "_port_names", []):
+            self.port_cb.set(port)
+
+    def _save_settings(self):
+        port = self.port_cb.get()
+        self._settings.update({
+            "font": self.font_name,
+            "instrument": self.sound_cb.get(),
+            "port": port if port and not port.startswith("(") else self._settings.get("port", ""),
+            "geometry": self.geometry(),
+        })
+        try:
+            path = self._settings_path()
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump(self._settings, fh, indent=2)
+        except Exception:  # noqa: BLE001 - never let a save failure crash the app
+            pass
+
+    def _dir(self) -> str:
+        """Folder the file dialogs open in (the last one used)."""
+        return self._settings.get("last_dir", "")
+
+    def _remember_dir(self, path):
+        if path:
+            self._settings["last_dir"] = os.path.dirname(path)
 
     # ---- fonts / theme -----------------------------------------------------
     @staticmethod
@@ -564,10 +619,12 @@ class App(ctk.CTk):
                 names = mido.get_output_names()
             except Exception:  # noqa: BLE001
                 names = []
+        self._port_names = names
         if names:
             self.port_cb.configure(values=names, state="normal")
             if self.port_cb.get() not in names:
-                self.port_cb.set(names[0])
+                self.port_cb.set(self._settings.get("port") if self._settings.get("port") in names
+                                 else names[0])
             self.play_btn.configure(state="normal")
         else:
             self.port_cb.configure(values=["(no MIDI output — see Help)"], state="disabled")
@@ -626,6 +683,7 @@ class App(ctk.CTk):
             self.after(0, lambda: self.play_btn.configure(text="▶  Play"))
 
     def _on_close(self):
+        self._save_settings()
         self._stop.set()
         self.destroy()
 
@@ -795,10 +853,11 @@ class App(ctk.CTk):
     # ---- File actions ------------------------------------------------------
     def open_midi(self):
         path = filedialog.askopenfilename(
-            title="Open MIDI file",
+            title="Open MIDI file", initialdir=self._dir(),
             filetypes=[("MIDI files", "*.mid *.midi"), ("All files", "*.*")])
         if not path:
             return
+        self._remember_dir(path)
         try:
             self.song = read_midi(path)
         except Exception as exc:  # noqa: BLE001 - surface any parse error to the user
@@ -829,10 +888,11 @@ class App(ctk.CTk):
         """Open a tuned .vsqx to put NEW lyrics on the same melody, keeping the tuning.
         If the file holds several vocal lines you pick one; each row is then one syllable."""
         path = filedialog.askopenfilename(
-            title="Open a tuned VSQX to re-lyric",
+            title="Open a tuned VSQX to re-lyric", initialdir=self._dir(),
             filetypes=[("VOCALOID VSQX", "*.vsqx"), ("All files", "*.*")])
         if not path:
             return
+        self._remember_dir(path)
         try:
             hdr = read_vsqx(path)
             clips = [c for c in read_clips(path) if c.notes]
@@ -876,10 +936,11 @@ class App(ctk.CTk):
                                 "then add its un-tuned version here.")
             return
         path = filedialog.askopenfilename(
-            title="Open the UN-tuned version (one note per syllable)",
+            title="Open the UN-tuned version (one note per syllable)", initialdir=self._dir(),
             filetypes=[("VOCALOID VSQX", "*.vsqx"), ("All files", "*.*")])
         if not path:
             return
+        self._remember_dir(path)
         try:
             hdr = read_vsqx(path)
             bclips = read_clips(path)
@@ -941,9 +1002,11 @@ class App(ctk.CTk):
         default = os.path.splitext(os.path.basename(self.midi_path or "lyrics"))[0] + ".vsqx"
         path = filedialog.asksaveasfilename(
             title="Export VSQX", defaultextension=".vsqx", initialfile=default,
+            initialdir=self._dir(),
             filetypes=[("VOCALOID VSQX", "*.vsqx"), ("All files", "*.*")])
         if not path:
             return
+        self._remember_dir(path)
         seq = os.path.splitext(os.path.basename(path))[0]
         try:
             write_vsqx(self.song, path, seq_name=seq, part_name=seq)
@@ -968,9 +1031,11 @@ class App(ctk.CTk):
         default = os.path.splitext(os.path.basename(self.vsqx_path))[0] + "_relyric.vsqx"
         path = filedialog.asksaveasfilename(
             title="Export re-lyriced VSQX", defaultextension=".vsqx", initialfile=default,
+            initialdir=self._dir(),
             filetypes=[("VOCALOID VSQX", "*.vsqx"), ("All files", "*.*")])
         if not path:
             return
+        self._remember_dir(path)
         new_lyrics = [n.lyric for n in self.song.notes]
         try:
             changed = relyric_clip(self.vsqx_path, self.clip.index, new_lyrics, path,
