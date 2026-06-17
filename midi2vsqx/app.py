@@ -51,14 +51,17 @@ BG_CARD = "#221d2e"    # rounded cards / panels
 BG_INPUT = "#2d2740"   # dropdowns / inputs
 NIGHT = "#241f30"      # top of the piano-roll gradient
 EMBER = "#3a2f2a"      # warm tint at the right of the header gradient
-MINT = "#7fd6a6"       # "all lyrics filled" success tint
 EMPTY_BG = "#2a2030"   # row tint for a note still missing a lyric
-TEAL = "#2fd4c4"       # high-contrast cool accent (geometric decor)
-PINK = "#e8709f"       # geometric decor accent
-SKY = "#5bb8f0"        # geometric decor accent
 ROW_ALT = "#1f1b29"    # zebra-stripe row (alternates with ABYSS)
-# decorative accent cycle for the banner's low-poly field + chevron rule
-GEO_ACCENTS = (PURPLE, LILAC, SKY, TEAL, ORANGE, PINK)
+# Extra shades of purple (all in Ina's family) for the geometric decoration.
+PLUM_DK = "#463d63"    # deep muted violet
+VIOLET = "#6e5ca6"     # mid violet (between PURPLE and LILAC)
+VIOLET_HI = "#8064c8"  # vivid violet
+LILAC_HI = "#c4b0f5"   # light lilac (highlights / "all lyrics filled")
+DONE = LILAC_HI        # "all lyrics filled" tint (kept on-palette, not green)
+# decorative accent cycle for the banner's low-poly field + chevron rule:
+# a dark → bright ramp of purples, so the header stays mainly purple.
+GEO_ACCENTS = (PLUM_DK, PURPLE, VIOLET, VIOLET_HI, LILAC, LILAC_HI)
 
 # Selectable UI font families (display name -> family). Tk falls back if missing.
 FONT_THEMES = {
@@ -356,7 +359,7 @@ class App(ctk.CTk):
         # H = horizontal (time), V = vertical (pitch).
         self._btn(edit, "＋", lambda: self.zoom_roll_v(1.3), kind="ghost", width=30).pack(side="right", padx=1)
         self._btn(edit, "－", lambda: self.zoom_roll_v(1 / 1.3), kind="ghost", width=30).pack(side="right", padx=1)
-        ctk.CTkLabel(edit, text="V", font=self.cf_bold, text_color=TEAL).pack(side="right", padx=(8, 2))
+        ctk.CTkLabel(edit, text="V", font=self.cf_bold, text_color=LILAC).pack(side="right", padx=(8, 2))
         self._btn(edit, "＋", lambda: self.zoom_roll(1.25), kind="ghost", width=30).pack(side="right", padx=1)
         self._btn(edit, "－", lambda: self.zoom_roll(1 / 1.25), kind="ghost", width=30).pack(side="right", padx=1)
         ctk.CTkLabel(edit, text="Zoom  H", font=self.cf_body, text_color=LILAC).pack(side="right", padx=(0, 2))
@@ -501,11 +504,11 @@ class App(ctk.CTk):
                                  fill=shades[(r + k) % len(shades)], outline="")
                 c.create_polygon(x1, y0, x1, y1, x0, y1,
                                  fill=shades[(r + k + 1) % len(shades)], outline="")
-        # faint high-contrast accent facets in opposite corners
+        # faint accent facets in opposite corners (both in the purple family)
         c.create_polygon(0, 0, w * 0.16, 0, 0, h * 0.55,
                          fill=_lerp(INK, PURPLE, 0.22), outline="")
         c.create_polygon(w, h, w - min(260, w * 0.16), h, w, h * 0.45,
-                         fill=_lerp(INK, TEAL, 0.16), outline="")
+                         fill=_lerp(INK, LILAC, 0.16), outline="")
 
     def _draw_empty_roll(self, c, w, h):
         c.create_text(20, 18, anchor="nw", fill=LILAC, font=self.fonts["bold"], text="♪  piano-roll")
@@ -1249,7 +1252,7 @@ class App(ctk.CTk):
         if self.export_mode == "midi" and total:
             filled = sum(1 for n in self.song.notes if n.lyric.strip())
             text = "%s  ·  %d/%d lyrics" % (self._info_prefix, filled, total)
-            color = MINT if filled == total else ORANGE
+            color = DONE if filled == total else ORANGE
         self.info.configure(text=text, text_color=color)
 
     def _populate(self):
