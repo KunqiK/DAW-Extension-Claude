@@ -33,7 +33,10 @@ if __name__ == "__main__":
     vsqx_path = os.path.join(HERE, "twinkle.vsqx")
     make_midi(midi_path)
     song = read_midi(midi_path)
-    for note, lyric in zip(song.notes, ["きら", "きら", "ひか", "る", "おそ", "らの", "ほし"]):
+    # One kana (one mora) per note — this is how VOCALOID/Piapro expects lyrics.
+    # Melody C C G G A A G == "Twinkle twinkle little star"; the matching
+    # Japanese line "きらきら星" is き-ら-き-ら-ひ-か-る (7 morae == 7 notes).
+    for note, lyric in zip(song.notes, ["き", "ら", "き", "ら", "ひ", "か", "る"]):
         note.lyric = lyric
     write_vsqx(song, vsqx_path, seq_name="Twinkle", part_name="Twinkle")
     print("wrote:", midi_path)
