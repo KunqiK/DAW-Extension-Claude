@@ -155,4 +155,10 @@ A personal toolkit to make **Piapro Studio** (Crypton VOCALOID editor, runs as a
     - **Walkthrough:** `HOW_TO_USE.md` (root) — dummy-proof setup (exe or source) + a function tour + workflows + FL routing; points to in-app Help.
     - **Tested:** compiles; headless construct draws banner (130 items) + roll gradient; font switch redraws; exe launches & stays alive.
   - **Housekeeping (user):** ✅ added `.gitignore` rules; ⏸️ **holding** FL-routing audio verification per user.
-  - **Possible next:** click-a-note-to-select / add-note on the roll; remember last MIDI port; per-syllable vowel control for tails.
+  - ✅ **COMMIT #4 pushed** (`43c25a7..96562b1`): gradients, Verdana, .exe build, HOW_TO_USE.
+  - ✅ **MILESTONE 7 — modern UI via CustomTkinter** (user: "looks 2000s, make it modern/dope"). Picked **CustomTkinter** over sv-ttk/web after an options Q (gave previews).
+    - Diagnosed honestly: Tkinter's native widgets are *why* it looked dated (boxy, no rounded/shadows/hover). Rebuilt the shell on **customtkinter 5.2.2**: `App(ctk.CTk)`, dark appearance, rounded **cards** (`CTkFrame corner_radius`), **pill buttons** (`CTkButton`, primary=orange / secondary=purple / ghost) with hover glow, modern `CTkOptionMenu` (Out/Sound/Font) and `CTkScrollbar`. Kept the gradient banner (`tk.Canvas`), the `tk.Canvas` piano-roll, and the `ttk.Treeview` table (dark-styled via `_style_tree`) — CTk has no table widget. Dialogs → `CTkToplevel` (+ `tk.Text`/`tk.Listbox` inside). Live font switch via `CTkFont` objects (+ tuple `self.fonts` for canvas/tree). Window 1180×720, deep-plum palette `BG_WIN/BG_CARD/BG_INPUT`.
+    - **All logic preserved** (re-lyric, baseline, multi-clip picker, playback, note editing, batch, help). `.config`→`.configure`, combobox→`CTkOptionMenu` API updated throughout.
+    - `requirements.txt` += `customtkinter>=5.2`; `build_exe.bat` += `--collect-all customtkinter` (bundles CTk theme assets).
+    - **Tested:** compiles; headless construct + font switch + MIDI load (7 rows, roll 36 / banner 130 items) + port menu populated; launched & runs.
+  - **Possible next:** rebuild/refresh the shareable `.exe` on the new UI; click-a-note-to-select / add-note; remember last MIDI port.
