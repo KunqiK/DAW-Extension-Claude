@@ -535,19 +535,36 @@ class App(ctk.CTk):
             self.editor_win.deiconify()
         self._dock_editor()
 
+    def _ensure_editor(self):
+        """Recreate the editor window if it was closed/destroyed, and refill the table."""
+        if self.editor_win is None or not self.editor_win.winfo_exists():
+            self._editor = None                 # the old inline-edit Entry (if any) is gone
+            self._build_editor_window()
+            if self.song is not None and self.song.notes:
+                self._populate()
+
     def _show_editor(self):
+        self._ensure_editor()                   # rebuild if it was closed, so we can always return
         self._editor_shown = True
-        if self.editor_win is not None:
-            self.editor_win.deiconify()
-            self._dock_editor()
+        self.editor_win.deiconify()
+        self._dock_editor()
+        try:
+            self.editor_win.lift()
+        except tk.TclError:
+            pass
 
     def _hide_editor(self):
         self._editor_shown = False
-        if self.editor_win is not None:
+        if self.editor_win is not None and self.editor_win.winfo_exists():
             self.editor_win.withdraw()
+        self.status.configure(text="› lyric window hidden — click “▤ Lyrics” (top-right) to bring it back.")
 
     def _toggle_editor(self):
-        if self._editor_shown:
+        # Decide from the window's ACTUAL visibility, not just the flag, so the toggle
+        # always recovers (e.g. if the window was closed with its X button).
+        win = self.editor_win
+        visible = win is not None and win.winfo_exists() and bool(win.winfo_viewable())
+        if visible:
             self._hide_editor()
         else:
             self._show_editor()
