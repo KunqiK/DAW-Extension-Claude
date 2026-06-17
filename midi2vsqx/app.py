@@ -107,8 +107,8 @@ class App(ctk.CTk):
         super().__init__()
         self._settings = self._load_settings()      # remembered prefs (font/port/etc.)
         self.title("Made by M. Y.")
-        self.geometry(self._settings.get("geometry") or "1040x820")   # visualizer-only; lyrics dock right
-        self.minsize(820, 560)
+        self.geometry(self._settings.get("geometry") or "1400x840")   # visualizer (left) + lyric table (right)
+        self.minsize(1040, 600)
         self.configure(fg_color=BG_WIN)
 
         self._intro_running = False     # opening animation state
@@ -142,11 +142,6 @@ class App(ctk.CTk):
         self._play_thread = None    # background MIDI playback thread
         self._stop = threading.Event()
 
-        self.editor_win = None      # the lyric table lives in its own window, docked right
-        self._dock_job = None       # debounce handle for re-docking the editor
-        self._editor_w = self._settings.get("editor_w", 480)
-        self._editor_shown = bool(self._settings.get("editor_shown", True))
-
         self._info_prefix = "No file loaded."   # file details; progress is appended live
         self.font_name = self._settings.get("font", "Verdana · rounded")
         if self.font_name not in FONT_THEMES:
@@ -163,7 +158,6 @@ class App(ctk.CTk):
         self._bind_keys()
         self._apply_saved_selections()
         self.after(20, self._start_intro)
-        self.after(140, self._init_editor)
 
     # ---- settings (remembered between runs) --------------------------------
     @staticmethod
@@ -193,14 +187,11 @@ class App(ctk.CTk):
 
     def _save_settings(self):
         port = self.port_cb.get()
-        ew = self.editor_win.winfo_width() if self.editor_win is not None else 0
         self._settings.update({
             "font": self.font_name,
             "instrument": self.sound_cb.get(),
             "port": port if port and not port.startswith("(") else self._settings.get("port", ""),
             "geometry": self.geometry(),
-            "editor_w": ew if ew > 80 else self._editor_w,
-            "editor_shown": self._editor_shown,
         })
         try:
             path = self._settings_path()
@@ -373,7 +364,6 @@ class App(ctk.CTk):
         right = ctk.CTkFrame(bar, fg_color="transparent")
         right.pack(side="right", padx=8, pady=8)
         self._btn(right, "?  Help", self._show_help, kind="ghost", width=72).pack(side="right", padx=4)
-        self._btn(right, "▤ Lyrics", self._toggle_editor, kind="ghost", width=92).pack(side="right", padx=4)
 
         # playback card
         play = ctk.CTkFrame(self, fg_color=BG_CARD, corner_radius=14)
@@ -394,11 +384,38 @@ class App(ctk.CTk):
         self.info.pack(side="right", padx=8)
         self._refresh_ports()
 
-        # piano-roll card (grows with the window; the visualizer is the centrepiece)
-        rollcard = ctk.CTkFrame(self, fg_color=BG_CARD, corner_radius=14)
-        rollcard.pack(side="top", fill="both", expand=True, padx=12, pady=6)
+        # main content: piano-roll visualizer (left, fills) + lyric table (right column)
+        content = ctk.CTkFrame(self, fg_color="transparent")
+
+        # right — lyric table, a fixed-width column (packed first so it reserves the right)
+        tablecard = ctk.CTkFrame(content, fg_color=BG_CARD, corner_radius=14)
+        tablecard.pack(side="right", fill="y", padx=(6, 12), pady=6)
+        self._style_tree()
+        cols = ("idx", "bar", "pitch", "dur", "lyric")
+        self.tree = ttk.Treeview(tablecard, columns=cols, show="headings", selectmode="browse")
+        widths = {"idx": 42, "bar": 74, "pitch": 66, "dur": 78, "lyric": 168}
+        heads = {"idx": "#", "bar": "Bar.Beat", "pitch": "Pitch", "dur": "Dur", "lyric": "Lyric"}
+        for c in cols:
+            self.tree.heading(c, text=heads[c])
+            self.tree.column(c, width=widths[c], anchor=("w" if c == "lyric" else "center"))
+        self.tree.tag_configure("odd", background=ABYSS)
+        self.tree.tag_configure("even", background=ROW_ALT)     # zebra striping
+        self.tree.tag_configure("empty", background=EMPTY_BG, foreground=PLUM)
+        tvsb = ctk.CTkScrollbar(tablecard, command=self.tree.yview,
+                                button_color=PURPLE, button_hover_color=LILAC)
+        self.tree.configure(yscrollcommand=tvsb.set)
+        self.tree.pack(side="left", fill="both", expand=True, padx=(10, 0), pady=10)
+        tvsb.pack(side="right", fill="y", padx=(2, 10), pady=10)
+        self.tree.bind("<Double-1>", lambda e: self._edit_selected())
+        self.tree.bind("<Return>", lambda e: self._edit_selected())
+        self.tree.bind("<Delete>", lambda e: self._delete_note())
+        self.tree.bind("<<TreeviewSelect>>", lambda e: self._highlight_selection())
+
+        # left — piano-roll visualizer (fills the rest)
+        rollcard = ctk.CTkFrame(content, fg_color=BG_CARD, corner_radius=14)
+        rollcard.pack(side="left", fill="both", expand=True, padx=(12, 6), pady=6)
         rollwrap = ctk.CTkFrame(rollcard, fg_color="transparent")
-        rollwrap.pack(side="top", fill="both", expand=True, padx=10, pady=(10, 4))
+        rollwrap.pack(side="top", fill="both", expand=True, padx=10, pady=10)
         self.canvas = tk.Canvas(rollwrap, height=300, bg=INK, highlightthickness=0)
         self.canvas.pack(side="left", fill="both", expand=True)
         self.roll_vsb = ctk.CTkScrollbar(rollwrap, orientation="vertical", command=self.canvas.yview,
@@ -407,7 +424,7 @@ class App(ctk.CTk):
         hsb = ctk.CTkScrollbar(rollcard, orientation="horizontal", command=self.canvas.xview,
                                button_color=PURPLE, button_hover_color=LILAC)
         self.canvas.configure(xscrollcommand=hsb.set)
-        hsb.pack(side="top", fill="x", padx=10, pady=(0, 4))
+        hsb.pack(side="top", fill="x", padx=10, pady=(0, 10))
         self.canvas.bind("<Configure>", lambda e: self._schedule_roll_redraw())
         self.canvas.bind("<Button-1>", self._roll_press)
         self.canvas.bind("<B1-Motion>", self._roll_drag)
@@ -418,9 +435,10 @@ class App(ctk.CTk):
         self.canvas.bind("<MouseWheel>", self._roll_scroll_wheel)         # vertical scroll
         self.canvas.bind("<Shift-MouseWheel>", self._roll_hscroll_wheel)  # horizontal scroll
 
-        # edit bar — undo/redo + transpose + a hint (MIDI mode only)
-        edit = ctk.CTkFrame(rollcard, fg_color="transparent")
-        edit.pack(side="top", fill="x", padx=10, pady=(0, 10))
+        # edit bar — undo/redo + transpose + zoom + a hint (full width, below the content)
+        editcard = ctk.CTkFrame(self, fg_color=BG_CARD, corner_radius=14)
+        edit = ctk.CTkFrame(editcard, fg_color="transparent")
+        edit.pack(fill="x", padx=10, pady=8)
         self.undo_btn = self._btn(edit, "↶ Undo", self.undo, kind="ghost", width=80)
         self.undo_btn.pack(side="left", padx=(0, 4))
         self.redo_btn = self._btn(edit, "↷ Redo", self.redo, kind="ghost", width=80)
@@ -443,147 +461,28 @@ class App(ctk.CTk):
         self._btn(edit, "－", lambda: self.zoom_roll(1 / 1.25), kind="ghost", width=30).pack(side="right", padx=1)
         ctk.CTkLabel(edit, text="Zoom  H", font=self.cf_body, text_color=LILAC).pack(side="right", padx=(0, 2))
 
-        # status (bottom) then the table fills the middle
+        # status line
         self.status = ctk.CTkLabel(self, text="› open a MIDI, or Import VSQx to re-lyric — "
                                    "press “?  Help” for a guide", font=self.cf_mono,
                                    text_color=LILAC, anchor="w")
-        self.status.pack(side="bottom", fill="x", padx=18, pady=(2, 10))
 
-        self._build_editor_window()             # the lyric table lives in its own docked window
+        # lay out the regions: content fills the middle; edit bar + status dock the bottom
+        content.pack(side="top", fill="both", expand=True)
+        self.status.pack(side="bottom", fill="x", padx=18, pady=(2, 10))
+        editcard.pack(side="bottom", fill="x", padx=12, pady=(0, 6))
 
         self.protocol("WM_DELETE_WINDOW", self._on_close)
-        self.bind("<Configure>", lambda e: self._schedule_dock())   # keep the editor glued
-        self.bind("<Unmap>", self._on_main_unmap)
-        self.bind("<Map>", self._on_main_map)
         self._draw_banner()
         self._draw_piano_roll()
         self._sync_edit_bar()
 
-    # ---- lyric-editor window (docked to the right of the visualizer) -------
-    def _build_editor_window(self):
-        """The syllable table in its own window, docked to the main window's right
-        edge and matching its height (see _dock_editor)."""
-        win = ctk.CTkToplevel(self)
-        win.title("Lyrics — Made by M. Y.")
-        win.configure(fg_color=BG_WIN)
-        win.transient(self)                      # companion: no taskbar entry, stays with parent
-        win.withdraw()                           # shown + docked once the main window is laid out
-        win.protocol("WM_DELETE_WINDOW", self._hide_editor)
-        self.editor_win = win
-
-        tablecard = ctk.CTkFrame(win, fg_color=BG_CARD, corner_radius=14)
-        tablecard.pack(side="top", fill="both", expand=True, padx=10, pady=10)
-        self._style_tree()
-        cols = ("idx", "bar", "pitch", "dur", "lyric")
-        self.tree = ttk.Treeview(tablecard, columns=cols, show="headings", selectmode="browse")
-        widths = {"idx": 40, "bar": 70, "pitch": 64, "dur": 80, "lyric": 180}
-        heads = {"idx": "#", "bar": "Bar.Beat", "pitch": "Pitch", "dur": "Dur", "lyric": "Lyric"}
-        for c in cols:
-            self.tree.heading(c, text=heads[c])
-            self.tree.column(c, width=widths[c], anchor=("w" if c == "lyric" else "center"))
-        self.tree.tag_configure("odd", background=ABYSS)
-        self.tree.tag_configure("even", background=ROW_ALT)     # zebra striping
-        self.tree.tag_configure("empty", background=EMPTY_BG, foreground=PLUM)
-        vsb = ctk.CTkScrollbar(tablecard, command=self.tree.yview,
-                               button_color=PURPLE, button_hover_color=LILAC)
-        self.tree.configure(yscrollcommand=vsb.set)
-        self.tree.pack(side="left", fill="both", expand=True, padx=(10, 0), pady=10)
-        vsb.pack(side="right", fill="y", padx=(2, 10), pady=10)
-        self.tree.bind("<Double-1>", lambda e: self._edit_selected())
-        self.tree.bind("<Return>", lambda e: self._edit_selected())
-        self.tree.bind("<Delete>", lambda e: self._delete_note())
-        self.tree.bind("<<TreeviewSelect>>", lambda e: self._highlight_selection())
-
-    def _dock_editor(self):
-        """Glue the editor window to the right edge of the main window, same height.
-        Preserves the editor's current width so the user can drag-resize it."""
-        win = self.editor_win
-        if win is None or not self._editor_shown:
-            return
-        try:
-            if not win.winfo_exists() or self.wm_state() == "iconic":
-                return
-            x = self.winfo_x() + self.winfo_width()   # always dock to the right edge
-            y = self.winfo_y()
-            h = self.winfo_height()
-            w = win.winfo_width()
-            if w < 80:
-                w = self._editor_w
-            # raw wm geometry (actual pixels) bypasses CTk's scaling of geometry()
-            win.tk.call("wm", "geometry", win._w, "%dx%d+%d+%d" % (w, h, x, y))
-        except tk.TclError:
-            pass
-
-    def _schedule_dock(self):
-        if self._dock_job is not None:
-            self.after_cancel(self._dock_job)
-        self._dock_job = self.after(30, self._do_dock)
-
-    def _do_dock(self):
-        self._dock_job = None
-        self._dock_editor()
-
-    def _init_editor(self):
-        """Show + dock the editor once the main window has real geometry."""
-        if self.editor_win is None:
-            return
-        if self._editor_shown:
-            self.editor_win.deiconify()
-        self._dock_editor()
-
-    def _ensure_editor(self):
-        """Recreate the editor window if it was closed/destroyed, and refill the table."""
-        if self.editor_win is None or not self.editor_win.winfo_exists():
-            self._editor = None                 # the old inline-edit Entry (if any) is gone
-            self._build_editor_window()
-            if self.song is not None and self.song.notes:
-                self._populate()
-
-    def _show_editor(self):
-        self._ensure_editor()                   # rebuild if it was closed, so we can always return
-        self._editor_shown = True
-        self.editor_win.deiconify()
-        self._dock_editor()
-        try:
-            self.editor_win.lift()
-        except tk.TclError:
-            pass
-
-    def _hide_editor(self):
-        self._editor_shown = False
-        if self.editor_win is not None and self.editor_win.winfo_exists():
-            self.editor_win.withdraw()
-        self.status.configure(text="› lyric window hidden — click “▤ Lyrics” (top-right) to bring it back.")
-
-    def _toggle_editor(self):
-        # Decide from the window's ACTUAL visibility, not just the flag, so the toggle
-        # always recovers (e.g. if the window was closed with its X button).
-        win = self.editor_win
-        visible = win is not None and win.winfo_exists() and bool(win.winfo_viewable())
-        if visible:
-            self._hide_editor()
-        else:
-            self._show_editor()
-
-    def _on_main_unmap(self, _e=None):
-        if self.editor_win is not None and self.editor_win.winfo_viewable():
-            self.editor_win.withdraw()
-
-    def _on_main_map(self, _e=None):
-        if self.editor_win is not None and self._editor_shown:
-            self.editor_win.deiconify()
-            self._schedule_dock()
-
     def _bind_keys(self):
-        # File / history / next-empty shortcuts are bound app-wide so they work from
-        # either window (the lyric table now lives in its own window).
-        self.bind_all("<Control-o>", lambda e: self.open_midi())
-        self.bind_all("<Control-r>", lambda e: self.open_tuned_vsqx())
-        self.bind_all("<Control-s>", lambda e: self.export_vsqx())
-        self.bind_all("<Control-z>", lambda e: self.undo())
-        self.bind_all("<Control-y>", lambda e: self.redo())
-        self.bind_all("<Control-Shift-Z>", lambda e: self.redo())
-        # Transpose stays on the visualizer window (you use it while looking at the roll).
+        self.bind("<Control-o>", lambda e: self.open_midi())
+        self.bind("<Control-r>", lambda e: self.open_tuned_vsqx())
+        self.bind("<Control-s>", lambda e: self.export_vsqx())
+        self.bind("<Control-z>", lambda e: self.undo())
+        self.bind("<Control-y>", lambda e: self.redo())
+        self.bind("<Control-Shift-Z>", lambda e: self.redo())
         self.bind("<Shift-Up>", lambda e: self.transpose(1))
         self.bind("<Shift-Down>", lambda e: self.transpose(-1))
         self.bind("<Control-Up>", lambda e: self.transpose(12))
@@ -1069,7 +968,7 @@ class App(ctk.CTk):
     def _on_close(self):
         self._save_settings()
         self._stop.set()
-        for job in (self._dock_job, self._roll_redraw_job, self._banner_redraw_job):
+        for job in (self._roll_redraw_job, self._banner_redraw_job):
             if job is not None:
                 try:
                     self.after_cancel(job)
