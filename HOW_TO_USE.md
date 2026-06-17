@@ -34,7 +34,12 @@ Put lyrics on a melody for **Piapro Studio** (VOCALOID). Two jobs:
 | **▶ Play / Out / Sound** | Hear it — through Windows, or routed to **FL Studio** (see Playback). |
 | **Font** | Change the look. **? Help** opens the full in-app guide. |
 
-The **piano-roll** strip shows your notes: **orange** = a syllable's start, **lavender** = a held/tuning note. Click a row to find it. In *Open MIDI* mode you can **drag notes** to move/re-pitch, drag a right edge to resize, and **Delete** to remove.
+The **piano-roll** strip shows your notes: **orange** = a syllable's start, **lavender** = a held/tuning note. Click a row (or a note) to find/select it. Zoom in/out with **Zoom −/＋** or **Ctrl + mouse-wheel** over the roll.
+
+### Editing a melody (Open MIDI mode)
+Right on the piano-roll you can: **drag** a note to move/re-pitch it · drag its **right edge** to resize · **double-click empty space** to add a note · select a row and press **Delete** to remove · **Transpose all** with −8va/−1/+1/+8va (or Shift+↑/↓, Ctrl+↑/↓). Made a mistake? **Undo/Redo** with Ctrl+Z / Ctrl+Y. *(Editing is off when re-wording a tuned file, so your Piapro tuning is never altered — there, clicking a note just highlights its syllable.)*
+
+A live **“X / N lyrics”** counter (top-right) turns green once every note has a word, and notes still missing one are tinted in the table — so you can see at a glance what's left. The app also **remembers** your font, instrument, MIDI output and window size between runs.
 
 ---
 
@@ -47,7 +52,7 @@ The **piano-roll** strip shows your notes: **orange** = a syllable's start, **la
 > **Splits & syllable counts:** the tool groups each tuned syllable for you. If a held vowel sits next to a real vowel syllable it can be ambiguous — then also use **Import Untuned Reference VSQx** (the pre-tuning version). The tuned and un-tuned versions must have the **same number of syllables**, or the tool will warn you.
 
 ## Playback → hear it in FL Studio
-Quick: set **Out = Microsoft GS Wavetable Synth**, pick a **Sound**, press **▶ Play**.
+Quick: set **Out = Microsoft GS Wavetable Synth**, pick a **Sound**, press **▶ Play**. Click a row/note first to play from there (like dropping a playhead); the top row plays from the start.
 With your FL instrument: install **loopMIDI**, create a port, enable it as a MIDI input in FL (**Options ▸ MIDI Settings**), select your instrument's channel, then set **Out** to that port here. Full step-by-step is under **? Help → 5 · Play it back**.
 
 ---
