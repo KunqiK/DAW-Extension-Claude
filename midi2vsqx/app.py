@@ -57,6 +57,18 @@ FONT = ("Segoe UI", 11)        # safe fallback / default body
 FONT_B = ("Segoe UI", 11, "bold")
 FONT_MONO = ("Consolas", 10)   # piano-roll + status accents
 
+# Derived deep shades for gradients (futuristic glass/neon look).
+NIGHT = "#241f30"      # top of the piano-roll gradient
+EMBER = "#3a2f2a"      # warm tint at the right of the header gradient
+
+
+def _lerp(c1, c2, t):
+    """Blend two #rrggbb hex colours; t clamped to [0, 1]."""
+    t = max(0.0, min(1.0, t))
+    a = (int(c1[1:3], 16), int(c1[3:5], 16), int(c1[5:7], 16))
+    b = (int(c2[1:3], 16), int(c2[3:5], 16), int(c2[5:7], 16))
+    return "#%02x%02x%02x" % tuple(round(a[i] + (b[i] - a[i]) * t) for i in range(3))
+
 
 class App(tk.Tk):
     def __init__(self):
@@ -82,7 +94,7 @@ class App(tk.Tk):
         self._editor = None     # (Entry, row_iid) while editing a lyric cell
         self._play_thread = None    # background MIDI playback thread
         self._stop = threading.Event()
-        self.font_name = "Segoe UI · clean"     # current UI font (see FONT_THEMES)
+        self.font_name = "Verdana · rounded"     # current UI font (see FONT_THEMES)
         self.fonts = self._fonts_for(self.font_name)
 
         self._apply_theme()
@@ -150,28 +162,42 @@ class App(tk.Tk):
         self.font_name = name
         self.fonts = self._fonts_for(name)
         self._apply_theme()
+        self._draw_banner()
         self._draw_piano_roll()
+
+    def _draw_banner(self):
+        """Decorative gradient header: title + subtitle + a neon gradient rule."""
+        c = getattr(self, "banner", None)
+        if c is None:
+            return
+        c.delete("all")
+        w = max(c.winfo_width(), 1)
+        h = int(c.cget("height"))
+        # horizontal gradient: ink → plum → a warm ember on the right
+        steps = 64
+        for i in range(steps):
+            t = i / (steps - 1)
+            col = _lerp(INK, PURPLE, t / 0.65) if t < 0.65 else _lerp(PURPLE, EMBER, (t - 0.65) / 0.35)
+            c.create_rectangle(w * i / steps, 0, w * (i + 1) / steps + 1, h, fill=col, outline="")
+        c.create_text(18, h // 2 - 7, anchor="w", text="MADE BY M. Y.",
+                      fill=ORANGE, font=self.fonts["title"])
+        c.create_text(20, h // 2 + 15, anchor="w",
+                      text="midi → vsqx  ·  re-lyric  ·  keep your tuning",
+                      fill=PAPER, font=self.fonts["sub"])
+        # neon rule along the bottom: purple → orange → lilac
+        for i in range(steps):
+            t = i / (steps - 1)
+            col = _lerp(PURPLE, ORANGE, t * 2) if t < 0.5 else _lerp(ORANGE, LILAC, (t - 0.5) * 2)
+            c.create_rectangle(w * i / steps, h - 3, w * (i + 1) / steps + 1, h, fill=col, outline="")
 
     # ---- UI construction ---------------------------------------------------
     def _build_ui(self):
-        # header
-        head = ttk.Frame(self, style="Head.TFrame", padding=(14, 10))
-        head.pack(side="top", fill="x")
-        ttk.Label(head, text="MADE BY M. Y.", style="Title.TLabel").pack(side="left")
-        ttk.Label(head, text="   midi → vsqx · re-lyric · keep your tuning",
-                  style="Sub.TLabel").pack(side="left", padx=(12, 0))
-        ttk.Button(head, text="?  Help", style="Ghost.TButton",
-                   command=self._show_help).pack(side="right")
-        self.font_cb = ttk.Combobox(head, width=17, state="readonly",
-                                     values=list(FONT_THEMES))
-        self.font_cb.set(self.font_name)
-        self.font_cb.pack(side="right", padx=(0, 10))
-        self.font_cb.bind("<<ComboboxSelected>>",
-                          lambda e: self._set_font_theme(self.font_cb.get()))
-        ttk.Label(head, text="Font", style="Sub.TLabel").pack(side="right", padx=(0, 6))
-        ttk.Frame(self, style="Rule.TFrame", height=2).pack(side="top", fill="x")
+        # gradient banner (decorative header) + neon rule
+        self.banner = tk.Canvas(self, height=58, bg=INK, highlightthickness=0)
+        self.banner.pack(side="top", fill="x")
+        self.banner.bind("<Configure>", lambda e: self._draw_banner())
 
-        # file actions
+        # file actions (+ font picker / help on the right)
         toolbar = ttk.Frame(self, padding=(8, 8, 8, 2))
         toolbar.pack(side="top", fill="x")
         for text, cmd in (("Open MIDI (Ctrl+O)", self.open_midi),
@@ -180,6 +206,15 @@ class App(tk.Tk):
                           ("Batch lyrics", self.batch_lyrics),
                           ("Export VSQX (Ctrl+S)", self.export_vsqx)):
             ttk.Button(toolbar, text=text, command=cmd).pack(side="left", padx=(0, 6))
+        ttk.Button(toolbar, text="?  Help", style="Ghost.TButton",
+                   command=self._show_help).pack(side="right")
+        self.font_cb = ttk.Combobox(toolbar, width=17, state="readonly",
+                                     values=list(FONT_THEMES))
+        self.font_cb.set(self.font_name)
+        self.font_cb.pack(side="right", padx=(0, 10))
+        self.font_cb.bind("<<ComboboxSelected>>",
+                          lambda e: self._set_font_theme(self.font_cb.get()))
+        ttk.Label(toolbar, text="Font").pack(side="right", padx=(0, 6))
 
         # playback bar
         play = ttk.Frame(self, padding=(8, 2, 8, 6))
@@ -238,6 +273,7 @@ class App(tk.Tk):
             text="› open a MIDI, or Import VSQx to re-lyric — press “?  Help” for a guide")
         self.status.pack(side="bottom", fill="x")
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        self._draw_banner()
         self._draw_piano_roll()      # empty-state placeholder + legend
 
     def _bind_keys(self):
@@ -277,7 +313,14 @@ class App(tk.Tk):
         self._roll_t0, self._row_h, self._kmax = t0, row_h, kmax
         end = max(n.start + n.dur for n in notes)
         width = int((end - t0) * self._PPT) + 2 * pad
-        c.configure(scrollregion=(0, 0, max(width, c.winfo_width()), H))
+        full = max(width, c.winfo_width())
+        c.configure(scrollregion=(0, 0, full, H))
+
+        # gradient backdrop (night-purple at top → black at bottom) for depth
+        bands = 22
+        for i in range(bands):
+            c.create_rectangle(0, H * i / bands, full, H * (i + 1) / bands + 1,
+                               fill=_lerp(NIGHT, INK, i / (bands - 1)), outline="")
 
         def px(t):
             return pad + (t - t0) * self._PPT
