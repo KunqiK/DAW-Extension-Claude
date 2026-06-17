@@ -138,5 +138,14 @@ A personal toolkit to make **Piapro Studio** (Crypton VOCALOID editor, runs as a
     - **Syllable-mismatch safeguard** (`unmapped_moras`): when an un-tuned baseline is loaded, export warns if N baseline syllables get no tuned notes (counts don't match). Answers user Q: **yes, tuned & un-tuned must have equal syllable counts.**
     - **UI polish:** bigger fonts (Segoe UI 10 / Bahnschrift title / Consolas mono), INK header bar with title + orange accent rule, themed Combobox/Checkbutton, window 1000×680. Baseline mode keeps the roll showing the TUNED notes (table = un-tuned syllables) via `_show_clip(..., draw=self.clip.notes)`.
     - **Tested:** all modules compile; headless build + load (MIDI + clip) + kana split + unmapped detection + GS port open/close all pass. Launched for user.
-  - **Next:** (5) light note editing (optional). Polish ideas: click-a-note-to-select on the roll; refresh roll lyric labels after edits; remember last MIDI port.
-  - **→ COMMIT #2 incoming** (this milestone), per "finish all of these and then commit."
+  - ✅ **COMMIT #2 pushed** (`cd53f61..eea06f9`): playback, batch lyrics, help, mismatch guard, UI polish.
+  - ✅ **MILESTONE 5 — note editing + font picker + Help readability + relabels.**
+    - **Light note editing (MIDI mode only)** (`app.py`): drag a piano-roll note to move/re-pitch, drag its right edge to resize (1/16 = 120-tick snap), select a row + Delete to remove. `_hit_note`/`_roll_press`/`_roll_drag`/`_roll_release`/`_delete_note`, gated by `_editable()` (export_mode=="midi"); `_draw_piano_roll` stores `_pad/_row_h/_kmax`. Re-lyric mode stays read-only so Piapro tuning is never altered. Edits flow into `self.song.notes` → table + export.
+    - **Live font picker** (user request): `FONT_THEMES` (Segoe/Bahnschrift/Consolas/Verdana/Yu Gothic); header Combobox → `_set_font_theme` rebuilds `self.fonts` and re-runs `_apply_theme` + redraw. All widgets/dialogs/canvas now read `self.fonts`.
+    - **Help readability:** `_show_help` Text now uses paragraph spacing (tag `spacing1/3`, `lmargin`, body `spacing2`) so sections breathe; matches chosen font.
+    - **Relabels (user):** title → **"Made by M. Y."** (window + header); buttons → "Open MIDI (Ctrl+O)", **"Import VSQx (Ctrl+R)"**, **"Import Untuned Reference VSQx"**, "Batch lyrics", "Export VSQX (Ctrl+S)" — all "…" removed. Info moved to the playback bar (right).
+    - 🐞 **Gotcha logged:** a Write hit an `fsync` error and silently dropped the `__init__` font/edit-state lines while later edits referenced them → `AttributeError: no attribute 'fonts'` at construct. Re-added the state; **after an fsync error, re-Read the file before trusting it.**
+    - **Tested:** compiles; headless build + font switch (Bahnschrift/Consolas) + MIDI load + hit-test ('move') + delete (7→6) + 28 help lines all pass. Launched for user.
+    - ✅ **User confirmed:** UI looks good; re-lyric round-trip works in Piapro.
+  - **→ COMMIT #3 incoming** (this milestone).
+  - **Possible next:** click-a-note-to-select on the roll; add-note; remember last MIDI port; per-syllable vowel control for tails.
