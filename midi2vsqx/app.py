@@ -75,7 +75,9 @@ def _lerp(c1, c2, t):
 
 
 class App(ctk.CTk):
-    _PPT = 0.06       # piano-roll pixels per tick (~115 px per 4/4 bar)
+    _PPT = 0.06       # default piano-roll zoom: pixels per tick (~115 px per 4/4 bar)
+    _PPT_MIN = 0.015  # zoom-out / zoom-in bounds
+    _PPT_MAX = 0.40
     _GRID = 120       # note-edit time snap (1/16 note, in ticks)
     _DEFAULT_DUR = VSQ_RESOLUTION   # new note length when added (one beat = 480 ticks)
     _UNDO_MAX = 100   # how many edit steps we remember
@@ -97,6 +99,7 @@ class App(ctk.CTk):
         self.baseline_starts = None # its chosen clip's syllable start ticks
         self.draw_notes = []        # raw notes drawn in the piano-roll
         self._note_items = []       # (canvas_id, note, is_lead) for highlight
+        self._ppt = self._PPT       # current horizontal zoom (pixels per tick)
         self._roll_t0 = 0           # tick at the left edge of the piano-roll
         self._pad = 16              # piano-roll inner padding
         self._row_h = 8.0           # piano-roll pixels per semitone (set when drawn)
@@ -296,6 +299,7 @@ class App(ctk.CTk):
         self.canvas.bind("<B1-Motion>", self._roll_drag)
         self.canvas.bind("<ButtonRelease-1>", self._roll_release)
         self.canvas.bind("<Double-Button-1>", self._roll_add)
+        self.canvas.bind("<Control-MouseWheel>", self._roll_zoom_wheel)
 
         # edit bar — undo/redo + transpose + a hint (MIDI mode only)
         edit = ctk.CTkFrame(rollcard, fg_color="transparent")
@@ -312,7 +316,11 @@ class App(ctk.CTk):
             b.pack(side="left", padx=2)
             self._transpose_btns.append(b)
         self.edit_hint = ctk.CTkLabel(edit, text="", font=self.cf_small, text_color=PURPLE)
-        self.edit_hint.pack(side="right", padx=4)
+        self.edit_hint.pack(side="right", padx=(10, 4))
+        # zoom controls (always active — view, not editing) + Ctrl+wheel on the roll
+        self._btn(edit, "＋", lambda: self.zoom_roll(1.25), kind="ghost", width=34).pack(side="right", padx=2)
+        self._btn(edit, "－", lambda: self.zoom_roll(1 / 1.25), kind="ghost", width=34).pack(side="right", padx=2)
+        ctk.CTkLabel(edit, text="Zoom", font=self.cf_body, text_color=LILAC).pack(side="right", padx=(0, 4))
 
         # status (bottom) then the table fills the middle
         self.status = ctk.CTkLabel(self, text="› open a MIDI, or Import VSQx to re-lyric — "
@@ -390,7 +398,7 @@ class App(ctk.CTk):
         t0 = (t0 // tpm) * tpm if tpm else t0
         self._roll_t0, self._row_h, self._kmax = t0, row_h, kmax
         end = max(n.start + n.dur for n in notes)
-        width = int((end - t0) * self._PPT) + 2 * pad
+        width = int((end - t0) * self._ppt) + 2 * pad
         full = max(width, c.winfo_width())
         c.configure(scrollregion=(0, 0, full, H))
 
@@ -400,7 +408,7 @@ class App(ctk.CTk):
                                fill=_lerp(NIGHT, INK, i / (bands - 1)), outline="")
 
         def px(t):
-            return pad + (t - t0) * self._PPT
+            return pad + (t - t0) * self._ppt
 
         def py(k):
             return pad + (kmax - k) * row_h
@@ -427,6 +435,25 @@ class App(ctk.CTk):
                               font=self.fonts["small"], text=label)
             lx = c.bbox(t)[2] + 12
 
+    def zoom_roll(self, factor):
+        """Zoom the piano-roll horizontally, keeping the left-edge position stable.
+        (Ctrl+wheel mirrors FL Studio's horizontal-zoom gesture — see the hotkeys tool.)"""
+        new = max(self._PPT_MIN, min(self._PPT_MAX, self._ppt * factor))
+        if abs(new - self._ppt) < 1e-9 or not self.draw_notes:
+            return
+        left_tick = self._roll_t0 + (self.canvas.canvasx(0) - self._pad) / self._ppt
+        self._ppt = new
+        self._draw_piano_roll()
+        sr = self.canvas.cget("scrollregion").split()
+        full = float(sr[2]) if len(sr) == 4 else 0.0
+        if full > 0:
+            x = self._pad + (left_tick - self._roll_t0) * self._ppt
+            self.canvas.xview_moveto(max(0.0, min(1.0, x / full)))
+
+    def _roll_zoom_wheel(self, e):
+        self.zoom_roll(1.15 if e.delta > 0 else 1 / 1.15)
+        return "break"
+
     def _highlight_selection(self):
         sel = self.tree.selection()
         if not sel or not self.song or not self._note_items:
@@ -440,7 +467,7 @@ class App(ctk.CTk):
             self.canvas.itemconfigure(item, fill=(PAPER if inside else (ORANGE if lead else LILAC)))
         sr = self.canvas.cget("scrollregion").split()
         if len(sr) == 4 and float(sr[2]) > 0:
-            self.canvas.xview_moveto(max(0.0, ((t0 - self._roll_t0) * self._PPT - 40) / float(sr[2])))
+            self.canvas.xview_moveto(max(0.0, ((t0 - self._roll_t0) * self._ppt - 40) / float(sr[2])))
 
     # ---- undo / redo (structural note edits in MIDI mode) ------------------
     def _snapshot(self):
@@ -531,7 +558,7 @@ class App(ctk.CTk):
         if not d:
             return
         cx, cy = self.canvas.canvasx(e.x), self.canvas.canvasy(e.y)
-        dtick = round((cx - d["cx"]) / self._PPT / self._GRID) * self._GRID
+        dtick = round((cx - d["cx"]) / self._ppt / self._GRID) * self._GRID
         n = d["note"]
         if d["mode"] == "resize":
             n.dur = max(self._GRID, d["dur0"] + dtick)
@@ -560,7 +587,7 @@ class App(ctk.CTk):
         cx, cy = self.canvas.canvasx(e.x), self.canvas.canvasy(e.y)
         if self._hit_note(cx, cy):               # double-clicked a note -> ignore
             return
-        tick = self._roll_t0 + round((cx - self._pad) / self._PPT / self._GRID) * self._GRID
+        tick = self._roll_t0 + round((cx - self._pad) / self._ppt / self._GRID) * self._GRID
         key = int(round(self._kmax - (cy - self._pad) / self._row_h))
         tick, key = max(0, tick), max(0, min(127, key))
         self._push_undo()
@@ -644,11 +671,33 @@ class App(ctk.CTk):
             return
         program = dict(GM_INSTRUMENTS).get(self.sound_cb.get(), 0)
         bpm = self.song.bpm if self.song else 120.0
+        notes = self._notes_to_play()
+        if not notes:
+            return
         self._stop.clear()
         self.play_btn.configure(text="■  Stop")
         self._play_thread = threading.Thread(
-            target=self._play_worker, args=(list(self.draw_notes), port, program, bpm), daemon=True)
+            target=self._play_worker, args=(notes, port, program, bpm), daemon=True)
         self._play_thread.start()
+
+    def _notes_to_play(self):
+        """All drawn notes, or — if a non-first row is selected — from that note onward,
+        so Play acts like a playhead you can drop anywhere by clicking a row/note."""
+        notes = list(self.draw_notes)
+        if not notes:
+            return notes
+        sel = self.tree.selection()
+        if sel and self.song:
+            i = self.tree.get_children().index(sel[0])
+            if 0 <= i < len(self.song.notes):
+                start = self.song.notes[i].start
+                if start > min(n.start for n in notes):
+                    from_sel = [n for n in notes if n.start >= start]
+                    if from_sel:
+                        self.status.configure(text="› playing from syllable %d (click row 1 to "
+                                              "play from the top)." % (i + 1))
+                        return from_sel
+        return notes
 
     def _play_worker(self, notes, port_name, program, bpm):
         spt = 60.0 / (bpm * VSQ_RESOLUTION)
@@ -787,7 +836,8 @@ class App(ctk.CTk):
                  "kana string like きらきら into き ら き ら."),
             ("h", "5 · Play it back"),
             ("", "Press ▶ Play to hear the loaded notes; ■ Stop halts. 'Out' chooses where "
-                 "the sound goes; 'Sound' picks an instrument for the built-in synth."),
+                 "the sound goes; 'Sound' picks an instrument for the built-in synth. Click a "
+                 "row (or a note) first to play from there — like dropping a playhead."),
             ("b", "A) Quick — Windows built-in synth (no setup)"),
             ("", "Set Out = 'Microsoft GS Wavetable Synth', pick a Sound, press Play."),
             ("b", "B) Hear it with your FL Studio instrument (via loopMIDI)"),
@@ -813,7 +863,8 @@ class App(ctk.CTk):
             ("h", "The piano-roll"),
             ("", "The strip up top shows your notes. ORANGE = a syllable's first note; "
                  "LAVENDER = a held/tuning note that continues it. Click a row to light up "
-                 "and locate that syllable."),
+                 "and locate that syllable. Zoom in/out with the Zoom −/＋ buttons or "
+                 "Ctrl + mouse-wheel over the roll (just like FL Studio's horizontal zoom)."),
         ]
 
     def _choose_clip(self, clips, preselect=0,
@@ -871,6 +922,7 @@ class App(ctk.CTk):
         self.baseline_starts = None
         self._undo.clear()
         self._redo.clear()
+        self._ppt = self._PPT
         self.draw_notes = self.song.notes
         self._info_prefix = "%s  —  %d notes, %s BPM, %d/%d" % (
             os.path.basename(path), len(self.song.notes), self.song.bpm,
@@ -916,6 +968,7 @@ class App(ctk.CTk):
         self.baseline_starts = None
         self._undo.clear()
         self._redo.clear()
+        self._ppt = self._PPT
         self._show_clip(clip, hdr, by_mora=True)
         self._sync_edit_bar()
         tag = "" if len(clips) == 1 else "  [%s]" % clip.label
@@ -998,6 +1051,12 @@ class App(ctk.CTk):
         self._commit_open_editor()
         if self.export_mode == "relyric":
             self._export_relyric()
+            return
+        empties = sum(1 for n in self.song.notes if not n.lyric.strip())
+        if empties and not messagebox.askokcancel(
+                "Some notes have no lyric",
+                "%d of %d notes don't have a lyric yet — they'll sing the default 'あ'.\n\n"
+                "Export anyway?" % (empties, len(self.song.notes))):
             return
         default = os.path.splitext(os.path.basename(self.midi_path or "lyrics"))[0] + ".vsqx"
         path = filedialog.asksaveasfilename(
