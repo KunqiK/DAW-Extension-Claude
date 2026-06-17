@@ -43,10 +43,12 @@ A personal toolkit to make **Piapro Studio** (Crypton VOCALOID editor, runs as a
 - [x] Identify the Piapro window — title `Piapro Studio`, host `FL64` (see `docs/research/piapro-window-and-zoom.md`).
 - [x] Piapro native zoom: `Ctrl+Shift+wheel` = horizontal zoom; vertical-zoom trigger still unknown.
 - [x] Piapro vertical zoom = `Ctrl+Shift+]`/`[` → mapped FL Alt+wheel to it (v0.2).
-- [ ] Export a reference `.vsqx` from Piapro to use as the schema ground truth.
+- [ ] **🚩 Does Piapro Studio EXPORT `.vsqx`?** (File ▸ Export) — gates the "re-lyric while preserving tuning" feature, which needs tuned notes back out as a readable file. Also: get untuned+tuned `.vsqx` samples from Piapro as schema ground truth (→ build the VSQX reader against real data).
+- [ ] Build a **VSQX reader** (reused by re-lyric diff, visualizer, playback, editing).
 - [ ] Confirm lyric language (Japanese kana vs romaji) for the converter's defaults.
 - [ ] Verify Piapro imports our generated `.vsqx` (notes + lyrics) — try `midi2vsqx/samples/twinkle.vsqx`.
-- [ ] Verify whether Piapro accepts AHK-synthetic `Ctrl+Shift+]`/`[` (F8/F9 test) for vertical zoom.
+- [x] Vertical zoom **SOLVED:** root cause was *timing*, not key encoding. The default `Send`/`SendInput` batches Ctrl+Shift+bracket in one instant — too fast for Piapro to register. F11 (`SendEvent` + 60 ms key delay) worked (confirmed by user). v0.4 locks this in for Alt+wheel and guards against the old mid-send wheel leak (`*Wheel::return` while `g_VZooming`).
+- [ ] Converter sample: lyrics must be **one kana (mora) per note** — fixed `make_twinkle.py` to き-ら-き-ら-ひ-か-る (was 2 kana/note).
 
 ## Session log
 
@@ -78,3 +80,24 @@ A personal toolkit to make **Piapro Studio** (Crypton VOCALOID editor, runs as a
 - ✅ **Built GUI** (`app.py`, Tkinter): load MIDI → note table → fast lyric entry (Enter = next) → Export VSQX. Compiles + constructs OK.
 - ✅ **Sample committed:** `midi2vsqx/samples/twinkle.{mid,vsqx}` + `make_twinkle.py`. `mido` installed (user site).
 - ⏳ **Pending user test:** does Piapro import the `.vsqx` (notes + lyrics)? Quick check: import `samples/twinkle.vsqx`.
+
+### 2026-06-16 — Session 2: Hotkey diagnostic v0.3 + converter fixes
+#### Phase 1 (hotkeys)
+- 🐞 **User result:** F8/F9 (clean synthetic `Ctrl+Shift+]`/`[`, no Alt/wheel) did **nothing** — not even a partial zoom.
+- 🔑 **Key inference:** Piapro accepts synthetic *wheel* events (H-zoom via `Ctrl+Shift+wheel` works) but rejects our synthetic *bracket keystroke*. Likely cause = the send method: scan-code `{sc01B}` is keyboard-layout-dependent (user types JP kana → may not be a US layout), or timing.
+- 🔧 **Shipped v0.3** (`hotkeys/PiaproFLHotkeys.ahk`, validated load-clean via `/ErrorStdOut`): horizontal zoom unchanged; **F8–F11 now test 4 send methods** for `Ctrl+Shift+]` — F8 char `^+]`, F9 virtual-key `^+{vkDD}`, F10 scan-code `^+{sc01B}`, F11 slow `SendEvent` (60 ms key delay). Each shows a tooltip naming the method. Alt+wheel temporarily uses the F8 "char" method (`{Alt up}^+]`).
+- ✅ **RESULT (user):** **F11 zoomed vertically** — the others did nothing. So the blocker was *timing*: `SendInput` (default `Send`) batches Ctrl+Shift+bracket too fast for Piapro; `SendEvent` with a 60 ms key delay (paced like typing) registers. Not a layout/encoding issue.
+- 🔧 **Shipped v0.4** (validated load-clean): Alt+wheel now `Critical` + `{Alt up}` + `SendEvent("^+]"/"^+[")` at `SetKeyDelay(60,30)`, restored in a `finally`. Removed the F8–F11 diagnostics. Added a leak guard — while `g_VZooming`, `*WheelUp/Down::return` so a stray physical notch can't escape as `Ctrl+Shift+wheel` (the old horizontal-leak bug).
+- 🐞 **v0.4 bug (user):** Alt+wheel zoomed only **once per Alt press** — couldn't hold-and-scroll like horizontal. Cause: the `{Alt up}` we send to clean the combo also desyncs AHK's Alt state, so `!WheelUp` stops matching until Alt is physically re-pressed.
+- 🔧 **Shipped v0.5** (validated load-clean): in the `finally`, re-press Alt with `Send("{Alt down}")` **only if still physically held** (`GetKeyState("Alt","P")`) → AHK stays in sync, continuous hold-and-scroll works, no stuck-Alt if released mid-send. Exposed `g_ZoomDelay`/`g_ZoomPress` (default 60/30 ms) as a user-tunable speed knob. **→ User testing continuous vertical zoom.**
+#### Phase 2 (converter)
+- 🐞 **Fixed sample lyrics:** `make_twinkle.py` used 2 kana/note (`きら/きら/ひか/…`). VOCALOID wants **one mora per note** → now き-ら-き-ら-ひ-か-る (7 morae = the 7 notes of "きらきら星"). Regenerated `samples/twinkle.vsqx` (verified: 7 single-kana `<y>` tags). The converter code was never at fault — it stores exactly the one string typed per note.
+- 📋 **Documented how to run the converter** for the user (open MIDI → one syllable/note, Enter = next → Export VSQX → Piapro File ▸ Import ▸ VSQX).
+- ✅ **Converter setup confirmed:** ran `pip install -r requirements.txt` → `mido 1.3.3` already present. User tried the app, likes it.
+- 💡 **Converter v2 wishlist (user):** (1) **piano-roll visualizer** (show timing + note length, not a table); (2) **instant playback** with an instrument of choice — user suggested it be *built into FL* to borrow FL instruments; (3) **real-time MIDI editing**.
+  - **Reality check given to user:** "built into FL" isn't feasible for a Python app (would need a full VST in C++/JUCE — explicitly rejected; FL scripting only covers MIDI control surfaces, not custom editor UIs). The *goal* (hear notes with a good instrument) is reachable two other ways: **(A)** built-in playback via Windows General-MIDI synth (pick instrument; zero setup), or **(B)** route MIDI to FL via a virtual cable (loopMIDI) for the real FL sound (one-time setup, FL running). Visualizer + light editing fit the Tkinter app fine; full real-time editing overlaps with FL (the original premise was "enter notes in FL, add lyrics here").
+  - ✅ **User picked:** all three (visualizer + playback + editing), playback **routed to FL** (virtual MIDI cable / loopMIDI).
+- ⭐ **NEW killer feature (user) — "re-lyric while preserving tuning":** Workflow today is painful: import lyrics (1 mora/note) → tune in Piapro (each mora gets split into several short notes at different pitches, all sharing the mora's lyric) → to reuse the same melody+tuning with **new** lyrics (e.g. a chorus), the user must restart from the untuned version and re-tune everything. **Desired:** the tool saves a baseline (mora→note layout) at export; user re-imports the **tuned** `.vsqx`; tool diffs vs baseline and, when new lyrics are entered, propagates each new mora to **all** sub-notes within the original note's span (e.g. "wa" split into 3 notes → new lyric "ke" applied to all 3). This is the project's highest-value idea (kills repeated re-tuning).
+  - **Approach (planned):** add a **VSQX reader**; map tuned sub-notes → original moras by time-span overlap against the saved baseline; re-apply new moras; re-export. Reader is reused by all other converter features.
+  - 🚩 **BLOCKER to confirm first:** does Piapro Studio **export** `.vsqx`? We know it *imports* VSQx/MIDI; the re-lyric round-trip needs the tuned notes back out as a readable file. **→ Asked user to check File ▸ Export formats + provide untuned+tuned `.vsqx` samples as schema ground truth.**
+  - **Recommended build order:** (1) re-lyric/tuning-preserving re-import → (2) piano-roll visualizer → (3) playback routed to FL (loopMIDI) → (4) light editing.
