@@ -76,8 +76,9 @@ def _lerp(c1, c2, t):
 
 class App(ctk.CTk):
     _PPT = 0.06       # default piano-roll zoom: pixels per tick (~115 px per 4/4 bar)
-    _PPT_MIN = 0.015  # zoom-out / zoom-in bounds
+    _PPT_MIN = 0.015  # horizontal zoom-out / zoom-in bounds
     _PPT_MAX = 0.40
+    _VZOOM_MAX = 5.0  # vertical zoom-in bound (1.0 = fit all pitches in view)
     _GRID = 120       # note-edit time snap (1/16 note, in ticks)
     _DEFAULT_DUR = VSQ_RESOLUTION   # new note length when added (one beat = 480 ticks)
     _UNDO_MAX = 100   # how many edit steps we remember
@@ -86,8 +87,8 @@ class App(ctk.CTk):
         super().__init__()
         self._settings = self._load_settings()      # remembered prefs (font/port/etc.)
         self.title("Made by M. Y.")
-        self.geometry(self._settings.get("geometry") or "1180x720")
-        self.minsize(900, 540)
+        self.geometry(self._settings.get("geometry") or "1200x820")
+        self.minsize(960, 600)
         self.configure(fg_color=BG_WIN)
 
         self.song = None        # Song (from a MIDI import, or moras of a tuned .vsqx)
@@ -100,6 +101,7 @@ class App(ctk.CTk):
         self.draw_notes = []        # raw notes drawn in the piano-roll
         self._note_items = []       # (canvas_id, note, is_lead) for highlight
         self._ppt = self._PPT       # current horizontal zoom (pixels per tick)
+        self._vzoom = 1.0           # vertical zoom (1.0 = fit all pitches; >1 = taller + scroll)
         self._roll_t0 = 0           # tick at the left edge of the piano-roll
         self._pad = 16              # piano-roll inner padding
         self._row_h = 8.0           # piano-roll pixels per semitone (set when drawn)
@@ -285,11 +287,16 @@ class App(ctk.CTk):
         self.info.pack(side="right", padx=8)
         self._refresh_ports()
 
-        # piano-roll card
+        # piano-roll card (grows with the window; the visualizer is the centrepiece)
         rollcard = ctk.CTkFrame(self, fg_color=BG_CARD, corner_radius=14)
-        rollcard.pack(side="top", fill="x", padx=12, pady=6)
-        self.canvas = tk.Canvas(rollcard, height=204, bg=INK, highlightthickness=0)
-        self.canvas.pack(side="top", fill="x", padx=10, pady=(10, 4))
+        rollcard.pack(side="top", fill="both", expand=True, padx=12, pady=6)
+        rollwrap = ctk.CTkFrame(rollcard, fg_color="transparent")
+        rollwrap.pack(side="top", fill="both", expand=True, padx=10, pady=(10, 4))
+        self.canvas = tk.Canvas(rollwrap, height=300, bg=INK, highlightthickness=0)
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.roll_vsb = ctk.CTkScrollbar(rollwrap, orientation="vertical", command=self.canvas.yview,
+                                         button_color=PURPLE, button_hover_color=LILAC)
+        self.canvas.configure(yscrollcommand=self.roll_vsb.set)   # vsb is packed on demand
         hsb = ctk.CTkScrollbar(rollcard, orientation="horizontal", command=self.canvas.xview,
                                button_color=PURPLE, button_hover_color=LILAC)
         self.canvas.configure(xscrollcommand=hsb.set)
@@ -299,7 +306,10 @@ class App(ctk.CTk):
         self.canvas.bind("<B1-Motion>", self._roll_drag)
         self.canvas.bind("<ButtonRelease-1>", self._roll_release)
         self.canvas.bind("<Double-Button-1>", self._roll_add)
-        self.canvas.bind("<Control-MouseWheel>", self._roll_zoom_wheel)
+        self.canvas.bind("<Control-MouseWheel>", self._roll_zoom_wheel)   # horizontal zoom
+        self.canvas.bind("<Alt-MouseWheel>", self._roll_vzoom_wheel)      # vertical zoom (FL parity)
+        self.canvas.bind("<MouseWheel>", self._roll_scroll_wheel)         # vertical scroll
+        self.canvas.bind("<Shift-MouseWheel>", self._roll_hscroll_wheel)  # horizontal scroll
 
         # edit bar — undo/redo + transpose + a hint (MIDI mode only)
         edit = ctk.CTkFrame(rollcard, fg_color="transparent")
@@ -317,10 +327,13 @@ class App(ctk.CTk):
             self._transpose_btns.append(b)
         self.edit_hint = ctk.CTkLabel(edit, text="", font=self.cf_small, text_color=PURPLE)
         self.edit_hint.pack(side="right", padx=(10, 4))
-        # zoom controls (always active — view, not editing) + Ctrl+wheel on the roll
-        self._btn(edit, "＋", lambda: self.zoom_roll(1.25), kind="ghost", width=34).pack(side="right", padx=2)
-        self._btn(edit, "－", lambda: self.zoom_roll(1 / 1.25), kind="ghost", width=34).pack(side="right", padx=2)
-        ctk.CTkLabel(edit, text="Zoom", font=self.cf_body, text_color=LILAC).pack(side="right", padx=(0, 4))
+        # zoom controls (always active — view, not editing). Also Ctrl/Alt+wheel on the roll.
+        self._btn(edit, "＋", lambda: self.zoom_roll_v(1.3), kind="ghost", width=30).pack(side="right", padx=1)
+        self._btn(edit, "－", lambda: self.zoom_roll_v(1 / 1.3), kind="ghost", width=30).pack(side="right", padx=1)
+        ctk.CTkLabel(edit, text="↕", font=self.cf_bold, text_color=LILAC).pack(side="right", padx=(6, 2))
+        self._btn(edit, "＋", lambda: self.zoom_roll(1.25), kind="ghost", width=30).pack(side="right", padx=1)
+        self._btn(edit, "－", lambda: self.zoom_roll(1 / 1.25), kind="ghost", width=30).pack(side="right", padx=1)
+        ctk.CTkLabel(edit, text="Zoom ↔", font=self.cf_body, text_color=LILAC).pack(side="right", padx=(0, 2))
 
         # status (bottom) then the table fills the middle
         self.status = ctk.CTkLabel(self, text="› open a MIDI, or Import VSQx to re-lyric — "
@@ -379,33 +392,44 @@ class App(ctk.CTk):
             have = True
         return flags
 
+    def _roll_view_h(self):
+        """Current visible height of the roll canvas (falls back to its requested
+        height before the window is laid out / in headless tests)."""
+        h = self.canvas.winfo_height()
+        return h if h > 20 else int(self.canvas.cget("height"))
+
     def _draw_piano_roll(self):
         c = self.canvas
         c.delete("all")
         self._note_items = []
         notes = self.draw_notes
+        H, pad = self._roll_view_h(), self._pad
+        W = max(c.winfo_width(), 1)
         if not notes:
-            c.configure(scrollregion=(0, 0, 0, 0))
-            c.create_text(16, 16, anchor="nw", fill=PURPLE, font=self.fonts["body"],
-                          text="♪  piano-roll — open a MIDI or import a tuned VSQx")
+            c.configure(scrollregion=(0, 0, W, H))
+            self._sync_roll_vscroll(False)
+            self._draw_roll_backdrop(c, W, H)
+            self._draw_empty_roll(c, W, H)
             return
-        H, pad = int(c.cget("height")), self._pad
         keys = [n.key for n in notes]
         kmin, kmax = min(keys), max(keys)
-        row_h = max(3.0, min(14.0, (H - 2 * pad) / (kmax - kmin + 1)))
+        keyspan = kmax - kmin + 1
+        fit = (H - 2 * pad) / keyspan if keyspan else (H - 2 * pad)
+        base = min(max(fit, 5.0), 26.0)              # row height that fits all pitches in view
+        row_h = base * self._vzoom                    # vertical zoom scales it up (then we scroll)
         t0 = min(n.start for n in notes)
         tpm = ticks_per_measure(self.song.numerator, self.song.denominator) if self.song else 1920
         t0 = (t0 // tpm) * tpm if tpm else t0
-        self._roll_t0, self._row_h, self._kmax = t0, row_h, kmax
         end = max(n.start + n.dur for n in notes)
         width = int((end - t0) * self._ppt) + 2 * pad
-        full = max(width, c.winfo_width())
-        c.configure(scrollregion=(0, 0, full, H))
+        full = max(width, W)
+        Hc = int(2 * pad + keyspan * row_h)           # full content height
+        Hv = max(H, Hc)                               # scroll height
+        self._roll_t0, self._row_h, self._kmax = t0, row_h, kmax
+        c.configure(scrollregion=(0, 0, full, Hv))
+        self._sync_roll_vscroll(Hc > H + 1)
 
-        bands = 22                                   # night-purple → black gradient backdrop
-        for i in range(bands):
-            c.create_rectangle(0, H * i / bands, full, H * (i + 1) / bands + 1,
-                               fill=_lerp(NIGHT, INK, i / (bands - 1)), outline="")
+        self._draw_roll_backdrop(c, full, Hv)
 
         def px(t):
             return pad + (t - t0) * self._ppt
@@ -415,25 +439,51 @@ class App(ctk.CTk):
 
         bar = t0
         while tpm and px(bar) <= width:
-            c.create_line(px(bar), 0, px(bar), H, fill=PURPLE)
+            c.create_line(px(bar), 0, px(bar), Hv, fill=PURPLE)
             bar += tpm
 
+        show_labels = row_h >= 9                       # don't cram labels when rows are tiny
         for i, lead in enumerate(self._lead_flags(notes)):
             n = notes[i]
             x0, x1, y0 = px(n.start), px(n.start + n.dur), py(n.key)
             item = c.create_rectangle(x0, y0, max(x0 + 2, x1), y0 + row_h,
                                       fill=(ORANGE if lead else LILAC), outline=INK)
             self._note_items.append((item, n, lead))
-            if lead and n.lyric:
+            if lead and n.lyric and show_labels:
                 c.create_text(x0 + 1, y0 - 1, anchor="sw", fill=PAPER,
                               font=self.fonts["small"], text=n.lyric)
+        self._draw_legend(c)
 
-        lx = pad                                     # legend
+    def _draw_roll_backdrop(self, c, w, h):
+        """Backdrop behind the notes (night-purple → black gradient)."""
+        bands = 24
+        for i in range(bands):
+            c.create_rectangle(0, h * i / bands, w, h * (i + 1) / bands + 1,
+                               fill=_lerp(NIGHT, INK, i / (bands - 1)), outline="")
+
+    def _draw_empty_roll(self, c, w, h):
+        c.create_text(20, 18, anchor="nw", fill=LILAC, font=self.fonts["bold"], text="♪  piano-roll")
+        c.create_text(20, 40, anchor="nw", fill=PURPLE, font=self.fonts["body"],
+                      text="open a MIDI, or Import VSQx to re-lyric")
+
+    def _draw_legend(self, c):
+        lx = self._pad
         for color, label in ((ORANGE, "syllable"), (LILAC, "held note")):
             c.create_rectangle(lx, 2, lx + 11, 11, fill=color, outline=INK)
             t = c.create_text(lx + 15, 1, anchor="nw", fill=PAPER,
                               font=self.fonts["small"], text=label)
             lx = c.bbox(t)[2] + 12
+
+    def _sync_roll_vscroll(self, show):
+        """Show the roll's vertical scrollbar only when the notes overflow the view."""
+        vsb = getattr(self, "roll_vsb", None)
+        if vsb is None:
+            return
+        mapped = bool(vsb.winfo_ismapped())
+        if show and not mapped:
+            vsb.pack(side="right", fill="y")
+        elif not show and mapped:
+            vsb.pack_forget()
 
     def zoom_roll(self, factor):
         """Zoom the piano-roll horizontally, keeping the left-edge position stable.
@@ -452,6 +502,34 @@ class App(ctk.CTk):
 
     def _roll_zoom_wheel(self, e):
         self.zoom_roll(1.15 if e.delta > 0 else 1 / 1.15)
+        return "break"
+
+    def zoom_roll_v(self, factor):
+        """Zoom the piano-roll vertically (taller notes + a scrollbar), keeping the pitch
+        at the top of the view stable. (Alt+wheel mirrors FL Studio's vertical-zoom gesture.)"""
+        new = max(1.0, min(self._VZOOM_MAX, self._vzoom * factor))
+        if abs(new - self._vzoom) < 1e-9 or not self.draw_notes:
+            return
+        c = self.canvas
+        top_key = self._kmax - (c.canvasy(0) - self._pad) / self._row_h if self._row_h else self._kmax
+        self._vzoom = new
+        self._draw_piano_roll()
+        sr = c.cget("scrollregion").split()
+        hv = float(sr[3]) if len(sr) == 4 else 0.0
+        if hv > 0:
+            y = self._pad + (self._kmax - top_key) * self._row_h
+            c.yview_moveto(max(0.0, min(1.0, y / hv)))
+
+    def _roll_vzoom_wheel(self, e):
+        self.zoom_roll_v(1.15 if e.delta > 0 else 1 / 1.15)
+        return "break"
+
+    def _roll_scroll_wheel(self, e):
+        self.canvas.yview_scroll(-1 if e.delta > 0 else 1, "units")
+        return "break"
+
+    def _roll_hscroll_wheel(self, e):
+        self.canvas.xview_scroll(-1 if e.delta > 0 else 1, "units")
         return "break"
 
     def _highlight_selection(self):
@@ -923,6 +1001,7 @@ class App(ctk.CTk):
         self._undo.clear()
         self._redo.clear()
         self._ppt = self._PPT
+        self._vzoom = 1.0
         self.draw_notes = self.song.notes
         self._info_prefix = "%s  —  %d notes, %s BPM, %d/%d" % (
             os.path.basename(path), len(self.song.notes), self.song.bpm,
@@ -969,6 +1048,7 @@ class App(ctk.CTk):
         self._undo.clear()
         self._redo.clear()
         self._ppt = self._PPT
+        self._vzoom = 1.0
         self._show_clip(clip, hdr, by_mora=True)
         self._sync_edit_bar()
         tag = "" if len(clips) == 1 else "  [%s]" % clip.label
