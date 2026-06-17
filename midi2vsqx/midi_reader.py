@@ -29,6 +29,7 @@ class Note:
     key: int            # MIDI note number 0..127
     velocity: int       # 0..127
     lyric: str = ""     # filled in by the user in the GUI
+    phoneme: str = ""   # VOCALOID phoneme (only set when reading an existing .vsqx)
 
 
 @dataclass
@@ -38,6 +39,7 @@ class Song:
     numerator: int = 4
     denominator: int = 4
     source_ppq: int = 480
+    pre_measure: int = 0      # count-in measures (set when reading an existing .vsqx)
 
     @property
     def duration_ticks(self) -> int:
