@@ -10,14 +10,15 @@ Put lyrics on a melody for **Piapro Studio** (VOCALOID). Two jobs:
 ## Getting it running
 
 ### Easiest — the app (no Python needed)
-1. Get **`MadeByMY-LyricTool.exe`** (one file).
-2. Double-click it.
-   - Windows may show *"Windows protected your PC"* (because the app isn't signed). Click **More info → Run anyway**. It's safe — it's just a small homemade tool.
+1. Get the **`MadeByMY-LyricTool`** folder (to share it, zip the whole folder and send the zip; the recipient unzips it).
+2. Open the folder and double-click **`MadeByMY-LyricTool.exe`** inside it. (Keep the exe together with its `_internal` folder — don't move the exe out on its own.)
+   - Windows may show *"Windows protected your PC"* (the app isn't signed). Click **More info → Run anyway**. It's safe — a small homemade tool.
+   - *(It's a one-folder build on purpose: a single-file .exe unpacks to a temp folder on launch and that can fail — "Failed to extract … return code -1" — when antivirus interferes. The folder build has no unpack step.)*
 
 ### From the source code (if you'd rather)
-1. Install **Python 3.9+** from python.org — tick **“Add Python to PATH”** during install.
+1. Install **Python 3** from python.org — tick **“Add Python to PATH”** during install.
 2. Download the project folder.
-3. Double-click **`midi2vsqx/Open Lyric Tool.bat`** (first run installs the one library it needs).
+3. Double-click **`midi2vsqx/Open Lyric Tool.bat`** — it finds your Python and installs the libraries the first time automatically.
    - Manual alternative: open a terminal in `midi2vsqx/` → `pip install -r requirements.txt` → `python app.py`.
 
 ---
