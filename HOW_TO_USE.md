@@ -28,7 +28,7 @@ Put lyrics on a melody for **Piapro Studio** (VOCALOID). Two jobs:
 |---|---|
 | **Open MIDI** | Load a melody (MIDI from FL Studio). Each note becomes a row — type a syllable. |
 | **Import VSQx** | Open a tuned `.vsqx` to **re-word it** (keeps your tuning). Pick a vocal line if there are several. |
-| **Import Untuned Reference VSQx** | *Optional.* Adds the pre-tuning file so syllable splits are exact (see note below). |
+| **Untuned ref** | *Optional.* Adds the pre-tuning ("untuned reference") file so syllable splits are exact (see note below). |
 | **Batch lyrics** | Paste many syllables at once instead of typing one by one. |
 | **Export VSQX** | Save the result. In Piapro: **File ▸ Import ▸ VSQX**, then **Job ▸ Convert phonemes to match language**. |
 | **▶ Play / Out / Sound** | Hear it — through Windows, or routed to **FL Studio** (see Playback). |

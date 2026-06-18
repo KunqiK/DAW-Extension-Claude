@@ -107,8 +107,8 @@ class App(ctk.CTk):
         super().__init__()
         self._settings = self._load_settings()      # remembered prefs (font/port/etc.)
         self.title("Made by M. Y.")
-        self.geometry(self._settings.get("geometry") or "1400x840")   # visualizer (left) + lyric table (right)
-        self.minsize(1040, 600)
+        self.geometry(self._settings.get("geometry") or "1480x860")   # controls+visualizer (left) + tall lyric table (right)
+        self.minsize(1120, 600)
         self.configure(fg_color=BG_WIN)
 
         self._intro_running = False     # opening animation state
@@ -350,46 +350,13 @@ class App(ctk.CTk):
         self.banner.pack(side="top", fill="x")
         self.banner.bind("<Configure>", lambda e: self._schedule_banner_redraw())
 
-        # toolbar card — file actions + font / help
-        bar = ctk.CTkFrame(self, fg_color=BG_CARD, corner_radius=14)
-        bar.pack(side="top", fill="x", padx=12, pady=(12, 6))
-        left = ctk.CTkFrame(bar, fg_color="transparent")
-        left.pack(side="left", padx=8, pady=8)
-        for text, cmd in (("Open MIDI", self.open_midi),
-                          ("Import VSQx", self.open_tuned_vsqx),
-                          ("Import Untuned Reference VSQx", self.open_baseline),
-                          ("Batch lyrics", self.batch_lyrics)):
-            self._btn(left, text, cmd).pack(side="left", padx=4)
-        self._btn(left, "Export VSQX", self.export_vsqx, kind="primary").pack(side="left", padx=4)
-        right = ctk.CTkFrame(bar, fg_color="transparent")
-        right.pack(side="right", padx=8, pady=8)
-        self._btn(right, "?  Help", self._show_help, kind="ghost", width=72).pack(side="right", padx=4)
+        # everything below the banner splits horizontally: a left column (controls +
+        # visualizer) and a TALL lyric table on the right that spans the whole height.
+        mainsplit = ctk.CTkFrame(self, fg_color="transparent")
 
-        # playback card
-        play = ctk.CTkFrame(self, fg_color=BG_CARD, corner_radius=14)
-        play.pack(side="top", fill="x", padx=12, pady=6)
-        pin = ctk.CTkFrame(play, fg_color="transparent")
-        pin.pack(fill="x", padx=8, pady=8)
-        self.play_btn = self._btn(pin, "▶  Play", self.toggle_play, kind="primary", width=96)
-        self.play_btn.pack(side="left", padx=(0, 12))
-        ctk.CTkLabel(pin, text="Out", font=self.cf_body, text_color=LILAC).pack(side="left", padx=(0, 4))
-        self.port_cb = self._menu(pin, ["—"], 250)
-        self.port_cb.pack(side="left", padx=(0, 14))
-        ctk.CTkLabel(pin, text="Sound", font=self.cf_body, text_color=LILAC).pack(side="left", padx=(0, 4))
-        self.sound_cb = self._menu(pin, [n for n, _ in GM_INSTRUMENTS], 150)
-        self.sound_cb.set("Grand Piano")
-        self.sound_cb.pack(side="left", padx=(0, 14))
-        self._btn(pin, "↻", self._refresh_ports, kind="ghost", width=36).pack(side="left")
-        self.info = ctk.CTkLabel(pin, text="No file loaded.", font=self.cf_bold, text_color=ORANGE)
-        self.info.pack(side="right", padx=8)
-        self._refresh_ports()
-
-        # main content: piano-roll visualizer (left, fills) + lyric table (right column)
-        content = ctk.CTkFrame(self, fg_color="transparent")
-
-        # right — lyric table, a fixed-width column (packed first so it reserves the right)
-        tablecard = ctk.CTkFrame(content, fg_color=BG_CARD, corner_radius=14)
-        tablecard.pack(side="right", fill="y", padx=(6, 12), pady=6)
+        # right — the lyric table, full height of the split (packed first to reserve the right)
+        tablecard = ctk.CTkFrame(mainsplit, fg_color=BG_CARD, corner_radius=14)
+        tablecard.pack(side="right", fill="y", padx=(6, 12), pady=(12, 6))
         self._style_tree()
         cols = ("idx", "bar", "pitch", "dur", "lyric")
         self.tree = ttk.Treeview(tablecard, columns=cols, show="headings", selectmode="browse")
@@ -411,9 +378,45 @@ class App(ctk.CTk):
         self.tree.bind("<Delete>", lambda e: self._delete_note())
         self.tree.bind("<<TreeviewSelect>>", lambda e: self._highlight_selection())
 
-        # left — piano-roll visualizer (fills the rest)
-        rollcard = ctk.CTkFrame(content, fg_color=BG_CARD, corner_radius=14)
-        rollcard.pack(side="left", fill="both", expand=True, padx=(12, 6), pady=6)
+        # left column — toolbar + playback + visualizer, stacked
+        leftcol = ctk.CTkFrame(mainsplit, fg_color="transparent")
+        leftcol.pack(side="left", fill="both", expand=True)
+
+        # toolbar card — file actions + help (all left-aligned)
+        bar = ctk.CTkFrame(leftcol, fg_color=BG_CARD, corner_radius=14)
+        bar.pack(side="top", fill="x", padx=(12, 6), pady=(12, 6))
+        barin = ctk.CTkFrame(bar, fg_color="transparent")
+        barin.pack(side="left", padx=8, pady=8)
+        for text, cmd in (("Open MIDI", self.open_midi),
+                          ("Import VSQx", self.open_tuned_vsqx),
+                          ("Untuned ref", self.open_baseline),
+                          ("Batch lyrics", self.batch_lyrics)):
+            self._btn(barin, text, cmd).pack(side="left", padx=4)
+        self._btn(barin, "Export VSQX", self.export_vsqx, kind="primary").pack(side="left", padx=4)
+        self._btn(barin, "?  Help", self._show_help, kind="ghost", width=72).pack(side="left", padx=4)
+
+        # playback card — transport + the file/progress label (all left-aligned)
+        play = ctk.CTkFrame(leftcol, fg_color=BG_CARD, corner_radius=14)
+        play.pack(side="top", fill="x", padx=(12, 6), pady=6)
+        pin = ctk.CTkFrame(play, fg_color="transparent")
+        pin.pack(fill="x", padx=8, pady=8)
+        self.play_btn = self._btn(pin, "▶  Play", self.toggle_play, kind="primary", width=96)
+        self.play_btn.pack(side="left", padx=(0, 12))
+        ctk.CTkLabel(pin, text="Out", font=self.cf_body, text_color=LILAC).pack(side="left", padx=(0, 4))
+        self.port_cb = self._menu(pin, ["—"], 230)
+        self.port_cb.pack(side="left", padx=(0, 12))
+        ctk.CTkLabel(pin, text="Sound", font=self.cf_body, text_color=LILAC).pack(side="left", padx=(0, 4))
+        self.sound_cb = self._menu(pin, [n for n, _ in GM_INSTRUMENTS], 150)
+        self.sound_cb.set("Grand Piano")
+        self.sound_cb.pack(side="left", padx=(0, 12))
+        self._btn(pin, "↻", self._refresh_ports, kind="ghost", width=36).pack(side="left", padx=(0, 14))
+        self.info = ctk.CTkLabel(pin, text="No file loaded.", font=self.cf_bold, text_color=ORANGE)
+        self.info.pack(side="left", padx=4)
+        self._refresh_ports()
+
+        # piano-roll visualizer — fills the rest of the left column
+        rollcard = ctk.CTkFrame(leftcol, fg_color=BG_CARD, corner_radius=14)
+        rollcard.pack(side="top", fill="both", expand=True, padx=(12, 6), pady=6)
         rollwrap = ctk.CTkFrame(rollcard, fg_color="transparent")
         rollwrap.pack(side="top", fill="both", expand=True, padx=10, pady=10)
         self.canvas = tk.Canvas(rollwrap, height=300, bg=INK, highlightthickness=0)
@@ -466,8 +469,8 @@ class App(ctk.CTk):
                                    "press “?  Help” for a guide", font=self.cf_mono,
                                    text_color=LILAC, anchor="w")
 
-        # lay out the regions: content fills the middle; edit bar + status dock the bottom
-        content.pack(side="top", fill="both", expand=True)
+        # lay out the regions: the split fills the middle; edit bar + status dock the bottom
+        mainsplit.pack(side="top", fill="both", expand=True)
         self.status.pack(side="bottom", fill="x", padx=18, pady=(2, 10))
         editcard.pack(side="bottom", fill="x", padx=12, pady=(0, 6))
 
@@ -1061,7 +1064,7 @@ class App(ctk.CTk):
                  "(the little tuning notes are grouped for you). Type the new word over each "
                  "syllable and export — every pitch and note-split you tuned is preserved. "
                  "After importing in Piapro, run Job ▸ Convert phonemes to match language."),
-            ("b", "Import Untuned Reference VSQx"),
+            ("b", "Untuned ref  (Import Untuned Reference VSQx)"),
             ("", "Optional. If a syllable was split in a way the tool can't read for sure "
                  "(e.g. a held vowel next to a real vowel syllable), also load the UN-tuned "
                  "version of the same line. It pins the exact syllable boundaries by timing. "
